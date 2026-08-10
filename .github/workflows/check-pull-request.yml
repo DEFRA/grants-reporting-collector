@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - main
-      - minimal
     types:
       - opened
       - reopened
@@ -17,22 +16,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          fetch-depth: 0
 
-      - name: Test code and Create Test Coverage Reports
-        uses: actions/setup-node@v6
+      - name: Setup node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 #v7.0.0
         with:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Security audit
-        run: npm run security-audit
-
-      - run: |
+      - name: Test code and Create Test Coverage Reports
+        run: |
           npm ci
           npm run format:check
           npm run lint
           npm test
+
+      - name: Security audit
+        run: npm run security-audit
 
       - name: Test Docker Image Build
         run: |
@@ -40,9 +42,9 @@ jobs:
           docker build --no-cache --tag cdp-node-backend-template .
           exit $?
 
-#      - name: SonarCloud Scan
-#        if: github.actor != 'dependabot[bot]'
-#        uses: SonarSource/sonarqube-scan-action@v5.3.1 #  (or check latest version on https://github.com/marketplace/actions/official-sonarqube-scan)
-#        env:
-#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-#          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f #8.2.1
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
