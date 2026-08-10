@@ -39,7 +39,7 @@ services:
 
   ################################################################################
 
-  cdp-node-backend-template:
+  grants-reporting-collector:
     build:
       context: .
       target: development
