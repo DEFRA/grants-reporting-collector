@@ -35,9 +35,7 @@ describe('Lock Functions', () => {
       const result = await acquireLock(locker, resource, logger)
 
       expect(result).toBeNull()
-      expect(logger.error).toHaveBeenCalledWith(
-        `Failed to acquire lock for ${resource}`
-      )
+      expect(logger.error).toHaveBeenCalledWith(`Failed to acquire lock for ${resource}`)
       expect(locker.lock).toHaveBeenCalledWith(resource)
     })
   })
@@ -60,9 +58,7 @@ describe('Lock Functions', () => {
 
       locker.lock.mockResolvedValue(null) // Mocking lock method to resolve to null
 
-      await expect(requireLock(locker, resource)).rejects.toThrow(
-        `Failed to acquire lock for ${resource}`
-      )
+      await expect(requireLock(locker, resource)).rejects.toThrow(`Failed to acquire lock for ${resource}`)
       expect(locker.lock).toHaveBeenCalledWith(resource)
     })
   })
