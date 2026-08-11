@@ -28,7 +28,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: |
-          npm ci
+          npm ci --ignore-scripts
           npm run format:check
           npm run lint
           npm test
@@ -41,6 +41,6 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: Publish Hot Fix
-        uses: DEFRA/cdp-build-action/build-hotfix@main
+        uses: DEFRA/cdp-build-action/build-hotfix@bec36ef9df0ced91ac6b01d77aa63a8e8a8760a6 #stable
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}

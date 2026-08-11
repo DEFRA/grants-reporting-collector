@@ -12,7 +12,7 @@ ENV PORT=${PORT}
 EXPOSE ${PORT} ${PORT_DEBUG}
 
 COPY --chown=node:node package*.json ./
-RUN npm install
+RUN npm ci --ignore-scripts
 COPY --chown=node:node ./src ./src
 
 CMD [ "npm", "run", "docker:dev" ]
@@ -30,7 +30,7 @@ USER node
 COPY --from=development /home/node/package*.json ./
 COPY --from=development /home/node/src ./src/
 
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev  --ignore-scripts
 
 ARG PORT
 ENV PORT=${PORT}
