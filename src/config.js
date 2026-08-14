@@ -97,6 +97,49 @@ export const config = convict({
       }
     }
   },
+  aws: {
+    endpointUrl: {
+      doc: 'AWS Endpoint URL used for LocalStack',
+      format: String,
+      nullable: true,
+      default: null,
+      env: 'AWS_ENDPOINT_URL'
+    },
+    region: {
+      doc: 'AWS Region',
+      format: String,
+      default: 'eu-west-2',
+      env: 'AWS_REGION'
+    },
+    s3: {
+      forcePathStyle: {
+        doc: 'Force path style on S3 bucket',
+        format: Boolean,
+        default: true,
+        env: 'FORCE_PATH_STYLE'
+      },
+      bucketName: {
+        doc: 'Raw events S3 bucket name',
+        format: String,
+        default: 'raw-event-bucket',
+        env: 'RAW_EVENT_BUCKET_NAME'
+      }
+    },
+    sqs: {
+      reportingEventsQueueUrl: {
+        doc: 'URL of the SQS queue to receive reporting events from',
+        format: String,
+        default: '#',
+        env: 'REPORTING_EVENTS_QUEUE_URL'
+      },
+      featuresQueueUrl: {
+        doc: 'URL of the SQS queue to receive new features updates from',
+        format: String,
+        default: '#',
+        env: 'FEATURES_QUEUE_URL'
+      }
+    }
+  },
   httpProxy: {
     doc: 'HTTP Proxy URL',
     format: String,

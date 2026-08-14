@@ -10,6 +10,15 @@ import { failAction } from '#/common/helpers/fail-action.js'
 import { pulse } from '#/plugins/pulse.js'
 import { requestTracing } from '#/plugins/request-tracing.js'
 import { metrics } from '@defra/cdp-metrics'
+import {
+  configureAndStartFeaturesMessaging,
+  stopFeaturesMessageSubscriber
+} from '#/messaging/inbound/features-fifo-message-queue-subscriber.js'
+import {
+  configureAndStartMessaging,
+  stopMessageSubscriber
+} from '#/messaging/inbound/reporting-event-queue-subscriber.js'
+import { setupS3Client } from '#/messaging/inbound/process-message.js'
 
 export async function createServer() {
   const server = Hapi.server({
@@ -57,6 +66,17 @@ export async function createServer() {
     },
     router
   ])
+
+  server.events.on('start', async () => {
+    setupS3Client()
+    configureAndStartMessaging()
+    configureAndStartFeaturesMessaging()
+  })
+
+  server.events.on('stop', async () => {
+    await stopMessageSubscriber()
+    await stopFeaturesMessageSubscriber()
+  })
 
   return server
 }
