@@ -1,4 +1,4 @@
-export const processFeaturesMessage = async (message, logger, attributes, _sentTimestamp) => {
+export const processFeaturesMessage = async (_message, logger, attributes, _sentTimestamp) => {
   try {
     const { name, scopes, updatedBy, valueType } = attributes
 
