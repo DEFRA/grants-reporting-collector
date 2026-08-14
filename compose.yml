@@ -11,15 +11,17 @@ services:
       FLOCI_DEFAULT_REGION: eu-west-2
     volumes:
       - ./compose/floci/start.d:/etc/floci/init/start.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "aws --endpoint-url=http://localhost:4566 sqs list-queues || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
-      - cdp-tenant
-
-  redis:
-    image: redis:7.2.3-alpine3.18
-    ports:
-      - '6379:6379'
-    networks:
-      - cdp-tenant
+      cdp-tenant:
+        aliases:
+          - floci
+          - sqs.eu-west-2.floci
+          - s3.eu-west-2.floci
 
   mongodb:
     image: mongo:7.0.28
@@ -59,10 +61,13 @@ services:
       PORT: 3001
       NODE_ENV: development
       MONGO_URI: mongodb://mongodb:27017/
+      REPORTING_EVENTS_QUEUE_URL: 'http://sqs.eu-west-2.floci:4566/000000000000/gfr__sqs__grants_reporting_events'
+      FEATURES_QUEUE_URL: 'http://sqs.eu-west-2.floci:4566/000000000000/gfr__sqs__rc_feature_control_updates.fifo'
     networks:
       - cdp-tenant
     volumes:
       - ./src:/home/node/src
+      - .env:/home/node/.env
       - ./package.json:/home/node/package.json
 
 ################################################################################
