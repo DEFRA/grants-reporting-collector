@@ -108,14 +108,7 @@ describe('Process Message test', () => {
 
   it('should process message if messageId is missing', async () => {
     uploadBlob.mockResolvedValueOnce(undefined)
-    await processInputMessage(
-      mockDb,
-      mockMetrics,
-      { data: 'test' },
-      mockLogger,
-      {},
-      '2023-01-01T00:00:00Z'
-    )
+    await processInputMessage(mockDb, mockMetrics, { data: 'test' }, mockLogger, {}, '2023-01-01T00:00:00Z')
 
     expect(mockDb.collection).not.toHaveBeenCalled()
     expect(uploadBlob).toHaveBeenCalled()
