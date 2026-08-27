@@ -6,20 +6,10 @@ import { trackEvent } from '#/common/helpers/logging/logger.js'
 export const processInputMessage = async (db, metrics, message, logger, attributes, sentTimestamp) => {
   try {
     const { messageId, agreementId } = attributes
-    if (messageId) {
-      try {
-        await db.collection('processed_messages').insertOne({ _id: messageId, processedAt: new Date() })
-      } catch (err) {
-        if (err.code === MONGODB_DUPLICATE_KEY_ERROR) {
-          logger.info(`Receipt of a duplicate message: ${messageId}`)
-          trackEvent(logger, 'duplicate-message', 'inbound', {
-            reference: `messageId: ${messageId}, agreementId: ${agreementId}`
-          })
-          return
-        }
-        throw err
-      }
+    if (await checkForDuplicate(db, logger, messageId, agreementId)) {
+      return
     }
+
     logger.info(`Received New Reporting event: ${JSON.stringify(attributes)}`)
     await metrics.counter('reporting-message-received')
 
@@ -29,6 +19,24 @@ export const processInputMessage = async (db, metrics, message, logger, attribut
   } catch (err) {
     logger.error(err, 'Unable to process Reporting event:')
   }
+}
+
+const checkForDuplicate = async (db, logger, messageId, agreementId) => {
+  if (messageId) {
+    try {
+      await db.collection('processed_messages').insertOne({ _id: messageId, processedAt: new Date() })
+    } catch (err) {
+      if (err.code === MONGODB_DUPLICATE_KEY_ERROR) {
+        logger.info(`Receipt of a duplicate message: ${messageId}`)
+        trackEvent(logger, 'duplicate-message', 'inbound', {
+          reference: `messageId: ${messageId}, agreementId: ${agreementId}`
+        })
+        return true
+      }
+      throw err
+    }
+  }
+  return false
 }
 
 export const setupS3Client = () => {
