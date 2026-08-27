@@ -1,4 +1,4 @@
-import { createLogger } from '#/common/helpers/logging/logger.js'
+import { getLogger } from '#/common/helpers/logging/logger.js'
 import { config } from '#/config.js'
 import { SqsSubscriber } from '@defra/grants-config-utils/sqs-subscriber'
 import { processFeaturesMessage } from '#/messaging/inbound/process-features-message.js'
@@ -22,7 +22,7 @@ describe('FeaturesMessageRequestQueueSubscriber', () => {
   describe('configureAndStartMessaging', () => {
     it('should configure and start the SQS subscriber', async () => {
       const mockLogger = vi.fn()
-      createLogger.mockReturnValueOnce(mockLogger)
+      getLogger.mockReturnValueOnce(mockLogger)
 
       await configureAndStartFeaturesMessaging()
 
@@ -39,7 +39,7 @@ describe('FeaturesMessageRequestQueueSubscriber', () => {
 
     it('should pass message on via onmessage function', async () => {
       const mockLogger = { info: vi.fn() }
-      createLogger.mockReturnValue(mockLogger)
+      getLogger.mockReturnValue(mockLogger)
       processFeaturesMessage.mockResolvedValueOnce()
 
       const onMessage = await configureAndStartFeaturesMessaging()
@@ -54,7 +54,7 @@ describe('FeaturesMessageRequestQueueSubscriber', () => {
   describe('stopFeaturesMessageSubscriber', () => {
     it('should stop the SQS subscriber', async () => {
       const mockLogger = vi.fn()
-      createLogger.mockReturnValueOnce(mockLogger)
+      getLogger.mockReturnValueOnce(mockLogger)
 
       await configureAndStartFeaturesMessaging()
 
@@ -67,7 +67,7 @@ describe('FeaturesMessageRequestQueueSubscriber', () => {
 
     it('should do nothing if the SQS subscriber is not present', async () => {
       const mockLogger = vi.fn()
-      createLogger.mockReturnValueOnce(mockLogger)
+      getLogger.mockReturnValueOnce(mockLogger)
 
       await stopFeaturesMessageSubscriber()
 

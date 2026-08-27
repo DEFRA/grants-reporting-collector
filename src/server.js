@@ -69,7 +69,7 @@ export async function createServer() {
 
   server.events.on('start', async () => {
     setupS3Client()
-    configureAndStartMessaging()
+    configureAndStartMessaging(server.db, server.metrics)
     configureAndStartFeaturesMessaging()
   })
 

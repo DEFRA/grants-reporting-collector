@@ -1,5 +1,5 @@
 import { configureAndStartMessaging, stopMessageSubscriber } from './reporting-event-queue-subscriber.js'
-import { createLogger } from '#/common/helpers/logging/logger.js'
+import { getLogger } from '#/common/helpers/logging/logger.js'
 import { processInputMessage } from './process-message.js'
 import { config } from '#/config.js'
 import { SqsSubscriber } from '@defra/grants-config-utils/sqs-subscriber'
@@ -19,9 +19,11 @@ describe('MessageRequestQueueSubscriber', () => {
   describe('configureAndStartMessaging', () => {
     it('should configure and start the SQS subscriber', async () => {
       const mockLogger = vi.fn()
-      createLogger.mockReturnValueOnce(mockLogger)
+      getLogger.mockReturnValueOnce(mockLogger)
 
-      await configureAndStartMessaging()
+      const mockDb = {}
+      const mockMetrics = {}
+      await configureAndStartMessaging(mockDb, mockMetrics)
 
       expect(SqsSubscriber).toHaveBeenCalledTimes(1)
       expect(SqsSubscriber).toHaveBeenCalledWith({
@@ -36,24 +38,36 @@ describe('MessageRequestQueueSubscriber', () => {
 
     it('should pass message on via onmessage function', async () => {
       const mockLogger = { info: vi.fn() }
-      createLogger.mockReturnValue(mockLogger)
+      getLogger.mockReturnValue(mockLogger)
       processInputMessage.mockResolvedValueOnce()
 
-      const onMessage = await configureAndStartMessaging()
+      const mockDb = {}
+      const mockMetrics = {}
+      const onMessage = await configureAndStartMessaging(mockDb, mockMetrics)
 
       await onMessage({ claimRef: 'ABC123', sbi: '123456789' }, {}, '1780599163000')
 
       expect(mockLogger.info).toHaveBeenCalledTimes(1)
       expect(processInputMessage).toHaveBeenCalledTimes(1)
+      expect(processInputMessage).toHaveBeenCalledWith(
+        mockDb,
+        mockMetrics,
+        { claimRef: 'ABC123', sbi: '123456789' },
+        expect.any(Object),
+        {},
+        '1780599163000'
+      )
     })
   })
 
   describe('stopMessageSubscriber', () => {
     it('should stop the SQS subscriber', async () => {
       const mockLogger = vi.fn()
-      createLogger.mockReturnValueOnce(mockLogger)
+      getLogger.mockReturnValueOnce(mockLogger)
 
-      await configureAndStartMessaging()
+      const mockDb = {}
+      const mockMetrics = {}
+      await configureAndStartMessaging(mockDb, mockMetrics)
 
       await stopMessageSubscriber()
 
@@ -64,7 +78,7 @@ describe('MessageRequestQueueSubscriber', () => {
 
     it('should do nothing if the SQS subscriber is not present', async () => {
       const mockLogger = vi.fn()
-      createLogger.mockReturnValueOnce(mockLogger)
+      getLogger.mockReturnValueOnce(mockLogger)
 
       await stopMessageSubscriber()
 
