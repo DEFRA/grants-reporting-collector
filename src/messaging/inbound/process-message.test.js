@@ -3,9 +3,11 @@ import { initialiseClient, uploadBlob } from '@defra/grants-config-utils/s3-inte
 import { MONGODB_DUPLICATE_KEY_ERROR } from '#/common/constants.js'
 import { trackEvent } from '#/common/helpers/logging/logger.js'
 import { config } from '#/config.js'
+import { validateReportingEvent } from '@defra/grants-reporting-publisher'
 
 vi.mock('@defra/grants-config-utils/s3-interactions')
 vi.mock('#/common/helpers/logging/logger.js')
+vi.mock('@defra/grants-reporting-publisher')
 vi.mock('#/config.js', () => ({
   config: {
     get: vi.fn((key) => {
@@ -41,6 +43,7 @@ describe('Process Message test', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    validateReportingEvent.mockReturnValue({ valid: true })
   })
 
   it('should log info and call uploadBlob with correct parameters', async () => {
@@ -61,6 +64,7 @@ describe('Process Message test', () => {
 
     expect(mockLogger.info).toHaveBeenCalledWith('Received New Reporting event: {"messageId":"123"}')
     expect(mockMetrics.counter).toHaveBeenCalledWith('reporting-message-received')
+    expect(mockMetrics.counter).toHaveBeenCalledWith('reporting-message-received-success')
     expect(uploadBlob).toHaveBeenCalledWith(
       mockLogger,
       'reporting-events/2023-01-01T00:00:00Z.json',
@@ -68,20 +72,40 @@ describe('Process Message test', () => {
     )
   })
 
-  it('should catch and log error if thrown', async () => {
+  it('should throw error if upload fails', async () => {
     uploadBlob.mockRejectedValueOnce(new Error('not successful'))
-    await processInputMessage(
-      mockDb,
-      mockMetrics,
-      {
-        grant: 'some-grant',
-        version: '1.0.0'
-      },
-      mockLogger,
-      { messageId: '123' }
-    )
+    await expect(
+      processInputMessage(
+        mockDb,
+        mockMetrics,
+        {
+          grant: 'some-grant',
+          version: '1.0.0'
+        },
+        mockLogger,
+        { messageId: '123' }
+      )
+    ).rejects.toThrow('not successful')
+  })
 
-    expect(mockLogger.error).toHaveBeenCalledWith(new Error('not successful'), 'Unable to process Reporting event:')
+  it('should throw error and log if reporting event is invalid', async () => {
+    validateReportingEvent.mockReturnValueOnce({ valid: false, errors: 'some error' })
+
+    await expect(
+      processInputMessage(
+        mockDb,
+        mockMetrics,
+        {
+          grant: 'some-grant',
+          version: '1.0.0'
+        },
+        mockLogger,
+        { messageId: '123' }
+      )
+    ).rejects.toThrow('Invalid Reporting event, cannot process: some error')
+
+    expect(mockMetrics.counter).toHaveBeenCalledWith('reporting-message-received-invalid')
+    expect(mockLogger.error).toHaveBeenCalledWith('Invalid Reporting event, cannot process: some error')
   })
 
   it('should skip processing and log duplicate if messageId already exists', async () => {
@@ -120,16 +144,16 @@ describe('Process Message test', () => {
     error.code = 50
     mockDb.collection().insertOne.mockRejectedValueOnce(error)
 
-    await processInputMessage(
-      mockDb,
-      mockMetrics,
-      { data: 'test' },
-      mockLogger,
-      { messageId: 'msg-1' },
-      '2023-01-01T00:00:00Z'
-    )
-
-    expect(mockLogger.error).toHaveBeenCalledWith(error, 'Unable to process Reporting event:')
+    await expect(
+      processInputMessage(
+        mockDb,
+        mockMetrics,
+        { data: 'test' },
+        mockLogger,
+        { messageId: 'msg-1' },
+        '2023-01-01T00:00:00Z'
+      )
+    ).rejects.toThrow('Connection error')
   })
 
   it('setupS3Client should initialise S3 client with config values', () => {
