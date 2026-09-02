@@ -45,14 +45,24 @@ describe('MessageRequestQueueSubscriber', () => {
       const mockMetrics = {}
       const onMessage = await configureAndStartMessaging(mockDb, mockMetrics)
 
-      await onMessage({ claimRef: 'ABC123', sbi: '123456789' }, {}, '1780599163000')
+      const validMessage = {
+        user: 'test-user',
+        correlationId: 'corr-123',
+        datetime: '2023-01-01T00:00:00Z',
+        version: '1.0.0',
+        application: 'test-app',
+        service: 'test-service',
+        eventData: { status: 'agreed' }
+      }
+
+      await onMessage(validMessage, {}, '1780599163000')
 
       expect(mockLogger.info).toHaveBeenCalledTimes(1)
       expect(processInputMessage).toHaveBeenCalledTimes(1)
       expect(processInputMessage).toHaveBeenCalledWith(
         mockDb,
         mockMetrics,
-        { claimRef: 'ABC123', sbi: '123456789' },
+        validMessage,
         expect.any(Object),
         {},
         '1780599163000'
