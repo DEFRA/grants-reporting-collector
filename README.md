@@ -8,6 +8,7 @@ Core delivery platform Node.js Backend Template.
   - [Setup](#setup)
   - [Development](#development)
   - [Testing](#testing)
+    - [End-to-End Idempotency Testing](./TESTING.md#end-to-end-idempotency-testing)
   - [Production](#production)
   - [Npm scripts](#npm-scripts)
   - [Update dependencies](#update-dependencies)
@@ -73,6 +74,8 @@ To test the application run:
 ```bash
 npm run test
 ```
+
+See [TESTING.md](./TESTING.md) for more details on testing strategies and end-to-end scenarios.
 
 ### Production
 

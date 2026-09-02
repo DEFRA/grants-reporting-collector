@@ -48,15 +48,28 @@ describe('Process Message test', () => {
 
   it('should log info and call uploadBlob with correct parameters', async () => {
     uploadBlob.mockResolvedValueOnce(undefined)
+    const validMessage = {
+      user: 'test-user',
+      sessionId: 'session-123',
+      correlationId: 'corr-123',
+      datetime: '2023-01-01T00:00:00Z',
+      version: '1.0.0',
+      application: 'test-app',
+      service: 'test-service',
+      eventData: {
+        accounts: {
+          sbi: '12345'
+        },
+        status: 'agreed',
+        details: {
+          grantId: 'grant-123'
+        }
+      }
+    }
     await processInputMessage(
       mockDb,
       mockMetrics,
-      {
-        grant: 'some-grant',
-        version: '1.0.0',
-        event: 'created',
-        status: 'agreed'
-      },
+      validMessage,
       mockLogger,
       { messageId: '123' },
       '2023-01-01T00:00:00Z'
@@ -68,40 +81,35 @@ describe('Process Message test', () => {
     expect(uploadBlob).toHaveBeenCalledWith(
       mockLogger,
       'reporting-events/2023-01-01T00:00:00Z.json',
-      '{"grant":"some-grant","version":"1.0.0","event":"created","status":"agreed"}'
+      JSON.stringify(validMessage)
     )
   })
 
   it('should throw error if upload fails', async () => {
     uploadBlob.mockRejectedValueOnce(new Error('not successful'))
+    const validMessage = {
+      user: 'test-user',
+      correlationId: 'corr-123',
+      datetime: '2023-01-01T00:00:00Z',
+      version: '1.0.0',
+      application: 'test-app',
+      service: 'test-service',
+      eventData: { status: 'agreed' }
+    }
     await expect(
-      processInputMessage(
-        mockDb,
-        mockMetrics,
-        {
-          grant: 'some-grant',
-          version: '1.0.0'
-        },
-        mockLogger,
-        { messageId: '123' }
-      )
+      processInputMessage(mockDb, mockMetrics, validMessage, mockLogger, { messageId: '123' })
     ).rejects.toThrow('not successful')
   })
 
   it('should throw error and log if reporting event is invalid', async () => {
     validateReportingEvent.mockReturnValueOnce({ valid: false, errors: 'some error' })
 
+    const invalidMessage = {
+      grant: 'some-grant',
+      version: '1.0.0'
+    }
     await expect(
-      processInputMessage(
-        mockDb,
-        mockMetrics,
-        {
-          grant: 'some-grant',
-          version: '1.0.0'
-        },
-        mockLogger,
-        { messageId: '123' }
-      )
+      processInputMessage(mockDb, mockMetrics, invalidMessage, mockLogger, { messageId: '123' })
     ).rejects.toThrow('Invalid Reporting event, cannot process: some error')
 
     expect(mockMetrics.counter).toHaveBeenCalledWith('reporting-message-received-invalid')
@@ -113,7 +121,15 @@ describe('Process Message test', () => {
     error.code = MONGODB_DUPLICATE_KEY_ERROR
     mockDb.collection().insertOne.mockRejectedValueOnce(error)
 
-    const message = { data: 'test' }
+    const message = {
+      user: 'test-user',
+      correlationId: 'corr-123',
+      datetime: '2023-01-01T00:00:00Z',
+      version: '1.0.0',
+      application: 'test-app',
+      service: 'test-service',
+      eventData: { status: 'agreed' }
+    }
     const attributes = { messageId: 'msg-1', agreementId: 'agr-1' }
     const sentTimestamp = '2023-01-01T00:00:00Z'
 
@@ -131,8 +147,17 @@ describe('Process Message test', () => {
   })
 
   it('should process message if messageId is missing', async () => {
+    const message = {
+      user: 'test-user',
+      correlationId: 'corr-123',
+      datetime: '2023-01-01T00:00:00Z',
+      version: '1.0.0',
+      application: 'test-app',
+      service: 'test-service',
+      eventData: { status: 'agreed' }
+    }
     uploadBlob.mockResolvedValueOnce(undefined)
-    await processInputMessage(mockDb, mockMetrics, { data: 'test' }, mockLogger, {}, '2023-01-01T00:00:00Z')
+    await processInputMessage(mockDb, mockMetrics, message, mockLogger, {}, '2023-01-01T00:00:00Z')
 
     expect(mockDb.collection).not.toHaveBeenCalled()
     expect(uploadBlob).toHaveBeenCalled()
@@ -144,15 +169,17 @@ describe('Process Message test', () => {
     error.code = 50
     mockDb.collection().insertOne.mockRejectedValueOnce(error)
 
+    const message = {
+      user: 'test-user',
+      correlationId: 'corr-123',
+      datetime: '2023-01-01T00:00:00Z',
+      version: '1.0.0',
+      application: 'test-app',
+      service: 'test-service',
+      eventData: { status: 'agreed' }
+    }
     await expect(
-      processInputMessage(
-        mockDb,
-        mockMetrics,
-        { data: 'test' },
-        mockLogger,
-        { messageId: 'msg-1' },
-        '2023-01-01T00:00:00Z'
-      )
+      processInputMessage(mockDb, mockMetrics, message, mockLogger, { messageId: 'msg-1' }, '2023-01-01T00:00:00Z')
     ).rejects.toThrow('Connection error')
   })
 
