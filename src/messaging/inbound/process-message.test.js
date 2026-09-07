@@ -80,7 +80,9 @@ describe('Process Message test', () => {
       '2023-01-01T00:00:00Z'
     )
 
-    expect(mockLogger.info).toHaveBeenCalledWith('Received New Reporting event (AGREEMENT_CREATED): {"messageId":"123"}')
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Received New Reporting event (AGREEMENT_CREATED): {"messageId":"123"}'
+    )
     expect(mockMetrics.counter).toHaveBeenCalledWith('reporting-message-received')
     expect(mockMetrics.counter).toHaveBeenCalledWith('reporting-message-received-success')
     expect(uploadBlob).toHaveBeenCalledWith(

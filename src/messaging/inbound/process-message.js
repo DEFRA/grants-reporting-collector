@@ -13,7 +13,10 @@ export const processInputMessage = async (db, metrics, message, logger, attribut
     throw new Error(`Invalid Reporting event, cannot process: ${errors}`)
   }
   const { messageId } = attributes
-  const { service, eventData: { agreementId, eventType } } = value
+  const {
+    service,
+    eventData: { agreementId, eventType }
+  } = value
   if (await checkForDuplicate(db, logger, messageId, agreementId, eventType)) {
     return
   }
