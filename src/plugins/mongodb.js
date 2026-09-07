@@ -21,12 +21,10 @@ export const mongoDb = {
       }
       const locker = new LockManager(mongoLocksCollection)
 
-      if (process.env.NODE_ENV !== 'test') {
-        try {
-          await createIndexes(db)
-        } catch (err) {
-          server.logger.error(err, 'Failed to create indexes')
-        }
+      try {
+        await createIndexes(db)
+      } catch (err) {
+        server.logger.error(err, 'Failed to create indexes')
       }
 
       server.logger.info(`MongoDb connected to ${databaseName}`)
@@ -37,12 +35,12 @@ export const mongoDb = {
       server.decorate('request', 'db', () => db, { apply: true })
       server.decorate('request', 'locker', () => locker, { apply: true })
 
-      server.ext('onPreStop', async (server) => {
-        server.logger.info('Closing Mongo client')
+      server.ext('onPreStop', async (svr) => {
+        svr.logger.info('Closing Mongo client')
         try {
           await client.close()
         } catch (e) {
-          server.logger.error(e, 'failed to close mongo client')
+          svr.logger.error(e, 'failed to close mongo client')
         }
       })
     }
