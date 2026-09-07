@@ -52,7 +52,11 @@ describe('MessageRequestQueueSubscriber', () => {
         version: '1.0.0',
         application: 'test-app',
         service: 'test-service',
-        eventData: { status: 'agreed' }
+        eventData: {
+          eventType: 'AGREEMENT_CREATED',
+          agreementId: 'agr-1',
+          status: 'agreed'
+        }
       }
 
       await onMessage(validMessage, {}, '1780599163000')

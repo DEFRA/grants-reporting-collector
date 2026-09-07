@@ -6,25 +6,25 @@ import { validateReportingEvent } from '@defra/grants-reporting-publisher'
 
 export const processInputMessage = async (db, metrics, message, logger, attributes, sentTimestamp) => {
   await metrics.counter('reporting-message-received')
-  const { valid, errors } = validateReportingEvent(message)
+  const { valid, errors, value } = validateReportingEvent(message)
   if (!valid) {
     await metrics.counter('reporting-message-received-invalid')
     logger.error(`Invalid Reporting event, cannot process: ${errors}`)
     throw new Error(`Invalid Reporting event, cannot process: ${errors}`)
   }
-  const { messageId, agreementId } = attributes
-  if (await checkForDuplicate(db, logger, messageId, agreementId)) {
+  const { messageId } = attributes
+  const { service, eventData: { agreementId, eventType } } = value
+  if (await checkForDuplicate(db, logger, messageId, agreementId, eventType)) {
     return
   }
 
-  logger.info(`Received New Reporting event: ${JSON.stringify(attributes)}`)
+  logger.info(`Received New Reporting event (${eventType}): ${JSON.stringify(attributes)}`)
   await metrics.counter('reporting-message-received-success')
 
-  //for now we are just going to dump straight into S3 bucket, but we will need to think about how we want to name the files and partition them in the bucket
-  await uploadBlob(logger, `reporting-events/${sentTimestamp}.json`, JSON.stringify(message))
+  await uploadBlob(logger, `reporting-events/${service}/${eventType}/${sentTimestamp}.json`, JSON.stringify(value))
 }
 
-const checkForDuplicate = async (db, logger, messageId, agreementId) => {
+const checkForDuplicate = async (db, logger, messageId, agreementId, eventType) => {
   if (messageId) {
     try {
       await db.collection('processed_messages').insertOne({ _id: messageId, processedAt: new Date() })
@@ -32,7 +32,7 @@ const checkForDuplicate = async (db, logger, messageId, agreementId) => {
       if (err.code === MONGODB_DUPLICATE_KEY_ERROR) {
         logger.info(`Receipt of a duplicate message: ${messageId}`)
         trackEvent(logger, 'duplicate-message', 'inbound', {
-          reference: `messageId: ${messageId}, agreementId: ${agreementId}`
+          reference: `messageId: ${messageId}, agreementId: ${agreementId}, eventType: ${eventType}`
         })
         return true
       }
