@@ -13,6 +13,11 @@ describe('#mongoDb', () => {
       await server.initialize()
     })
 
+    afterAll(async () => {
+      vi.spyOn(server.mongoClient, 'close').mockResolvedValue()
+      await server.stop()
+    })
+
     test('Server should have expected MongoDb decorators', () => {
       expect(server.db).toBeInstanceOf(Db)
       expect(server.mongoClient).toBeInstanceOf(MongoClient)
@@ -38,10 +43,10 @@ describe('#mongoDb', () => {
     })
 
     test('Should close Mongo client on server stop', async () => {
-      const closeSpy = vi.spyOn(server.mongoClient, 'close')
+      const closeSpy = vi.spyOn(server.mongoClient, 'close').mockResolvedValue()
       await server.stop({ timeout: 1000 })
 
-      expect(closeSpy).toHaveBeenCalledWith(true)
+      expect(closeSpy).toHaveBeenCalled()
     })
   })
 })

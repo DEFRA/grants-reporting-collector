@@ -21,10 +21,13 @@ describe('#startServer', () => {
 
   describe('When server starts', () => {
     test('Should start up server as expected', async () => {
-      await startServerImport.startServer()
+      const server = await startServerImport.startServer()
 
       expect(createServerSpy).toHaveBeenCalled()
       expect(hapiServerSpy).toHaveBeenCalled()
+
+      vi.spyOn(server.mongoClient, 'close').mockResolvedValue()
+      await server.stop()
     })
   })
 
