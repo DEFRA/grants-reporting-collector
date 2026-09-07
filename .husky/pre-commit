@@ -1,1 +1,4 @@
+#!/usr/bin/env sh
+. "${0%/*}/_/h"
+
 npm run git:pre-commit-hook

@@ -43,7 +43,10 @@ describe('Process Message test', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
-    validateReportingEvent.mockReturnValue({ valid: true })
+    validateReportingEvent.mockImplementation((message) => ({
+      valid: true,
+      value: message
+    }))
   })
 
   it('should log info and call uploadBlob with correct parameters', async () => {
@@ -57,6 +60,8 @@ describe('Process Message test', () => {
       application: 'test-app',
       service: 'test-service',
       eventData: {
+        eventType: 'AGREEMENT_CREATED',
+        agreementId: 'grant-123',
         accounts: {
           sbi: '12345'
         },
@@ -75,12 +80,14 @@ describe('Process Message test', () => {
       '2023-01-01T00:00:00Z'
     )
 
-    expect(mockLogger.info).toHaveBeenCalledWith('Received New Reporting event: {"messageId":"123"}')
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Received New Reporting event (AGREEMENT_CREATED): {"messageId":"123"}'
+    )
     expect(mockMetrics.counter).toHaveBeenCalledWith('reporting-message-received')
     expect(mockMetrics.counter).toHaveBeenCalledWith('reporting-message-received-success')
     expect(uploadBlob).toHaveBeenCalledWith(
       mockLogger,
-      'reporting-events/2023-01-01T00:00:00Z.json',
+      'reporting-events/test-service/AGREEMENT_CREATED/2023-01-01T00:00:00Z.json',
       JSON.stringify(validMessage)
     )
   })
@@ -94,7 +101,11 @@ describe('Process Message test', () => {
       version: '1.0.0',
       application: 'test-app',
       service: 'test-service',
-      eventData: { status: 'agreed' }
+      eventData: {
+        eventType: 'AGREEMENT_CREATED',
+        agreementId: 'grant-123',
+        status: 'agreed'
+      }
     }
     await expect(
       processInputMessage(mockDb, mockMetrics, validMessage, mockLogger, { messageId: '123' })
@@ -128,9 +139,13 @@ describe('Process Message test', () => {
       version: '1.0.0',
       application: 'test-app',
       service: 'test-service',
-      eventData: { status: 'agreed' }
+      eventData: {
+        eventType: 'AGREEMENT_CREATED',
+        agreementId: 'agr-1',
+        status: 'agreed'
+      }
     }
-    const attributes = { messageId: 'msg-1', agreementId: 'agr-1' }
+    const attributes = { messageId: 'msg-1' }
     const sentTimestamp = '2023-01-01T00:00:00Z'
 
     await processInputMessage(mockDb, mockMetrics, message, mockLogger, attributes, sentTimestamp)
@@ -142,7 +157,7 @@ describe('Process Message test', () => {
     expect(uploadBlob).not.toHaveBeenCalled()
     expect(mockLogger.info).toHaveBeenCalledWith('Receipt of a duplicate message: msg-1')
     expect(trackEvent).toHaveBeenCalledWith(mockLogger, 'duplicate-message', 'inbound', {
-      reference: 'messageId: msg-1, agreementId: agr-1'
+      reference: 'messageId: msg-1, agreementId: agr-1, eventType: AGREEMENT_CREATED'
     })
   })
 
@@ -154,7 +169,11 @@ describe('Process Message test', () => {
       version: '1.0.0',
       application: 'test-app',
       service: 'test-service',
-      eventData: { status: 'agreed' }
+      eventData: {
+        eventType: 'AGREEMENT_CREATED',
+        agreementId: 'grant-123',
+        status: 'agreed'
+      }
     }
     uploadBlob.mockResolvedValueOnce(undefined)
     await processInputMessage(mockDb, mockMetrics, message, mockLogger, {}, '2023-01-01T00:00:00Z')
@@ -176,7 +195,11 @@ describe('Process Message test', () => {
       version: '1.0.0',
       application: 'test-app',
       service: 'test-service',
-      eventData: { status: 'agreed' }
+      eventData: {
+        eventType: 'AGREEMENT_CREATED',
+        agreementId: 'grant-123',
+        status: 'agreed'
+      }
     }
     await expect(
       processInputMessage(mockDb, mockMetrics, message, mockLogger, { messageId: 'msg-1' }, '2023-01-01T00:00:00Z')

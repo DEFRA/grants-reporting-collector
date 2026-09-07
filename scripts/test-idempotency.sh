@@ -29,21 +29,18 @@ docker exec -i $MONGO_CONTAINER mongosh grants-reporting-collector --eval 'db.pr
 # 2. First Message Injection (Success Path)
 echo "Sending first message..."
 MESSAGE_BODY='{
-  "user": "test-user",
-  "sessionId": "session-123",
   "correlationId": "corr-123",
   "datetime": "2023-01-01T00:00:00Z",
   "version": "1.0.0",
   "application": "test-app",
   "service": "test-service",
   "eventData": {
-    "accounts": {
-      "sbi": "12345"
-    },
-    "status": "agreed",
-    "details": {
-      "grantId": "grant-123"
-    }
+    "sbi": "12345",
+    "eventType": "AGREEMENT_CREATED",
+    "agreementId": "'"$AGREEMENT_ID"'",
+    "agreementStatus": "ACTIVE",
+    "agreementType": "WOODLAND",
+    "options": []
   }
 }'
 aws --endpoint-url=$ENDPOINT_URL sqs send-message \
