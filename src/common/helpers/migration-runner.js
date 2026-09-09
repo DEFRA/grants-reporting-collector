@@ -1,6 +1,17 @@
 import { config } from '#/config.js'
 import { processInputMessage } from '#/messaging/inbound/process-message.js'
 
+/**
+ * Runs the grant migration process.
+ * It checks if the migration has already been completed successfully or if the migration is applicable to the current environment.
+ * If applicable, it fetches grant IDs for specified codes and processes each grant by fetching its versions and transforming them
+ * into reporting events. We only need this to pick up the historic grants from before reporting launched, it can be deleted after
+ * running once in production.
+ * @param db
+ * @param metrics
+ * @param logger
+ * @returns {Promise<void>}
+ */
 export const runMigration = async (db, metrics, logger) => {
   const collection = db.collection('migration_status')
   const status = await collection.findOne({ _id: 'grant-migration' })
@@ -103,19 +114,31 @@ async function migrateGrant(grantId, db, metrics, logger) {
   }
 }
 
+function incrementYear(dateString, yearsToAdd) {
+  const date = new Date(dateString)
+  date.setFullYear(date.getFullYear() + yearsToAdd)
+  return date.toISOString().substring(0, 10)
+}
+
 export function transformToEvent(agreement, grant, versions) {
   const latestVersion = versions[versions.length - 1]
   const reversedVersions = [...versions].reverse()
 
   const versionWithPayment = reversedVersions.find((v) => v.payment) || latestVersion
   const versionWithStartDate = reversedVersions.find((v) => v.payment?.agreementStartDate) || versionWithPayment
-  const versionWithEndDate = reversedVersions.find((v) => v.payment?.agreementEndDate) || versionWithPayment
 
   const annualTotalPence = versionWithPayment.payment?.annualTotalPence?.$numberInt
     ? Number.parseInt(versionWithPayment.payment.annualTotalPence.$numberInt)
     : 0
+  const annualTotalPounds = annualTotalPence / 100
 
-  const options = (latestVersion.actionApplications || []).map((app) => {
+  let options = (latestVersion.actionApplications || []).map((app) => {
+    const appliedForYear = Number.parseInt(versionWithPayment.application?.parcel?.find((p) => p.parcelId === app.parcelId)?.actions?.find((a) => a.code === app.code)?.durationYears.$numberInt ?? '1')
+
+    const startDate = versionWithStartDate.payment?.agreementStartDate ?? new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0,10)
+    const endDate =
+      versionWithStartDate.payment?.agreementEndDate ??
+      incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
     return {
       parcelReference: app.parcelId || '',
       parcelSizeUnderAgreement: app.appliedFor?.quantity?.$numberDecimal
@@ -125,25 +148,59 @@ export function transformToEvent(agreement, grant, versions) {
       optionQuantity: app.appliedFor?.quantity?.$numberDecimal
         ? Number.parseFloat(app.appliedFor.quantity.$numberDecimal)
         : 0,
-      optionValue: annualTotalPence,
-      optionStartDate: versionWithStartDate.payment?.agreementStartDate || null,
-      optionEndDate: versionWithEndDate.payment?.agreementEndDate || null
+      optionValue: annualTotalPounds,
+      optionYear: appliedForYear,
+      optionStartDate: startDate,
+      optionEndDate: endDate
     }
   })
+
+  if (options.length === 0 && versionWithPayment.payment) {
+    options = options.concat(
+      (Object.values(versionWithPayment.payment.parcelItems) || []).map((pi) => {
+        const appliedForYear = Number.parseInt(
+          versionWithPayment.application?.parcel
+            ?.find((p) => p.parcelId === pi.parcelId)
+            ?.actions?.find((a) => a.code === pi.code)?.durationYears.$numberInt ?? '1'
+        )
+
+        const startDate =
+          versionWithStartDate.payment?.agreementStartDate ??
+          new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0, 10)
+        const endDate =
+          versionWithStartDate.payment?.agreementEndDate ??
+          incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
+        return {
+          parcelReference: pi.parcelId || '',
+          parcelSizeUnderAgreement: Number.parseFloat(pi.quantity.$numberDecimal),
+          optionCode: pi.code,
+          optionQuantity: Number.parseFloat(pi.quantity.$numberDecimal),
+          optionValue: pi.annualPaymentPence?.$numberInt ? Number.parseInt(pi.annualPaymentPence.$numberInt) / 100 : 0,
+          optionYear: appliedForYear,
+          optionStartDate: startDate,
+          optionEndDate: endDate
+        }
+      })
+    )
+  }
 
   return {
     correlationId: latestVersion.correlationId || `migration-${agreement.agreementNumber}`,
     datetime: agreement.createdAt?.$date?.$numberLong || new Date().toISOString(),
     version: '1.0.0',
     application: 'migration-runner',
-    service: 'grants-reporting-collector',
+    service: 'grants',
     eventData: {
       eventType: 'AGREEMENT_CREATED',
       agreementId: agreement.agreementNumber,
       agreementType: grant.code,
       agreementStatus: latestVersion.status,
-      agreementStartDate: versionWithStartDate?.payment?.agreementStartDate || null,
-      agreementEndDate: versionWithEndDate?.payment?.agreementEndDate || null,
+      ...(versionWithStartDate?.payment?.agreementStartDate && {
+        agreementStartDate: versionWithStartDate?.payment?.agreementStartDate
+      }),
+      ...(versionWithStartDate?.payment?.agreementEndDate && {
+        agreementEndDate: versionWithStartDate?.payment?.agreementEndDate
+      }),
       agreementValue: versionWithPayment.payment?.agreementTotalPence?.$numberInt
         ? Number.parseInt(versionWithPayment.payment.agreementTotalPence.$numberInt)
         : 0,
