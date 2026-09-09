@@ -133,9 +133,15 @@ export function transformToEvent(agreement, grant, versions) {
   const annualTotalPounds = annualTotalPence / 100
 
   let options = (latestVersion.actionApplications || []).map((app) => {
-    const appliedForYear = Number.parseInt(versionWithPayment.application?.parcel?.find((p) => p.parcelId === app.parcelId)?.actions?.find((a) => a.code === app.code)?.durationYears.$numberInt ?? '1')
+    const appliedForYear = Number.parseInt(
+      versionWithPayment.application?.parcel
+        ?.find((p) => p.parcelId === app.parcelId)
+        ?.actions?.find((a) => a.code === app.code)?.durationYears.$numberInt ?? '1'
+    )
 
-    const startDate = versionWithStartDate.payment?.agreementStartDate ?? new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0,10)
+    const startDate =
+      versionWithStartDate.payment?.agreementStartDate ??
+      new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0, 10)
     const endDate =
       versionWithStartDate.payment?.agreementEndDate ??
       incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
@@ -201,9 +207,10 @@ export function transformToEvent(agreement, grant, versions) {
       ...(versionWithStartDate?.payment?.agreementEndDate && {
         agreementEndDate: versionWithStartDate?.payment?.agreementEndDate
       }),
-      agreementValue: versionWithPayment.payment?.agreementTotalPence?.$numberInt
-        ? Number.parseInt(versionWithPayment.payment.agreementTotalPence.$numberInt)
-        : 0,
+      agreementValue:
+        (versionWithPayment.payment?.agreementTotalPence?.$numberInt
+          ? Number.parseInt(versionWithPayment.payment.agreementTotalPence.$numberInt)
+          : 0) / 100,
       sbi: agreement.sbi,
       options
     }
