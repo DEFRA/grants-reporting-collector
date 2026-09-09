@@ -60,7 +60,7 @@ async function migrateByCode(code, db, metrics, logger) {
     throw new Error(`Failed to fetch agreements for code ${code}: ${response.statusText}`)
   }
 
-  const ids = await response.json()
+  const { agreementNumbers: ids } = await response.json()
   logger.info(`Found ${ids.length} grants to migrate for code ${code}`)
 
   for (const grantId of ids) {
@@ -193,7 +193,7 @@ export function transformToEvent(agreement, grant, versions) {
 
   return {
     correlationId: latestVersion.correlationId || `migration-${agreement.agreementNumber}`,
-    datetime: agreement.createdAt?.$date?.$numberLong || new Date().toISOString(),
+    datetime: new Date(Number.parseInt(agreement.createdAt?.$date?.$numberLong)).toISOString(),
     version: '1.0.0',
     application: 'migration-runner',
     service: 'grants',

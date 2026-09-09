@@ -67,20 +67,24 @@ describe('migration-runner', () => {
         if (url.includes('code=woodland')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ['grant-1']
+            json: async () => ({ agreementNumbers: ['grant-1'] })
           })
         }
         if (url.includes('code=frps-private-beta')) {
           return Promise.resolve({
             ok: true,
-            json: async () => []
+            json: async () => ({ agreementNumbers: [] })
           })
         }
         if (url.includes('grant-1/versions')) {
           return Promise.resolve({
             ok: true,
             json: async () => ({
-              agreement: { agreementNumber: 'AGR1', sbi: '123' },
+              agreement: { 
+                agreementNumber: 'AGR1', 
+                sbi: '123',
+                createdAt: { $date: { $numberLong: '1780045783425' } }
+              },
               grant: { code: 'woodland' },
               versions: [{ status: 'active', actionApplications: [] }],
               nextOffset: null
@@ -107,13 +111,13 @@ describe('migration-runner', () => {
         if (url.includes('code=woodland')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ['grant-1']
+            json: async () => ({ agreementNumbers: ['grant-1'] })
           })
         }
         if (url.includes('code=frps-private-beta')) {
           return Promise.resolve({
             ok: true,
-            json: async () => []
+            json: async () => ({ agreementNumbers: [] })
           })
         }
         if (url.includes('grant-1/versions')) {
@@ -122,7 +126,11 @@ describe('migration-runner', () => {
             return Promise.resolve({
               ok: true,
               json: async () => ({
-                agreement: { agreementNumber: 'AGR1', sbi: '123' },
+                agreement: { 
+                  agreementNumber: 'AGR1', 
+                  sbi: '123',
+                  createdAt: { $date: { $numberLong: '1780045783425' } }
+                },
                 grant: { code: 'woodland' },
                 versions: [{ status: 'v1' }],
                 nextOffset: 1
@@ -132,7 +140,11 @@ describe('migration-runner', () => {
           return Promise.resolve({
             ok: true,
             json: async () => ({
-              agreement: { agreementNumber: 'AGR1', sbi: '123' },
+              agreement: { 
+                agreementNumber: 'AGR1', 
+                sbi: '123',
+                createdAt: { $date: { $numberLong: '1780045783425' } }
+              },
               grant: { code: 'woodland' },
               versions: [{ status: 'v2' }],
               nextOffset: null
@@ -171,7 +183,7 @@ describe('migration-runner', () => {
       mockDb.findOne.mockResolvedValue(null)
       global.fetch.mockResolvedValueOnce({
         ok: true,
-        json: async () => ['grant-1']
+        json: async () => ({ agreementNumbers: ['grant-1'] })
       })
       global.fetch.mockResolvedValueOnce({ ok: false, statusText: 'Server Error' })
 
@@ -188,13 +200,13 @@ describe('migration-runner', () => {
         if (url.includes('code=woodland')) {
           return Promise.resolve({
             ok: true,
-            json: async () => ['grant-1']
+            json: async () => ({ agreementNumbers: ['grant-1'] })
           })
         }
         if (url.includes('code=frps-private-beta')) {
           return Promise.resolve({
             ok: true,
-            json: async () => []
+            json: async () => ({ agreementNumbers: [] })
           })
         }
         if (url.includes('grant-1/versions')) {
@@ -218,7 +230,11 @@ describe('migration-runner', () => {
 
   describe('transformToEvent', () => {
     it('should transform data correctly', () => {
-      const agreement = { agreementNumber: 'AGR1', sbi: '123' }
+      const agreement = { 
+        agreementNumber: 'AGR1', 
+        sbi: '123',
+        createdAt: { $date: { $numberLong: '1780045783425' } }
+      }
       const grant = { code: 'woodland' }
       const latestVersion = {
         status: 'active',
@@ -248,10 +264,15 @@ describe('migration-runner', () => {
     })
 
     it('should search backwards for missing payment or dates', () => {
-      const agreement = { agreementNumber: 'AGR1', sbi: '123' }
+      const agreement = { 
+        agreementNumber: 'AGR1', 
+        sbi: '123',
+        createdAt: { $date: { $numberLong: '1780045783425' } }
+      }
       const grant = { code: 'woodland' }
       const versions = [
         {
+          createdAt: { $date: { $numberLong: '1780045783425' } },
           payment: {
             agreementStartDate: '2023-01-01',
             agreementEndDate: '2024-01-01',
@@ -262,6 +283,7 @@ describe('migration-runner', () => {
         {
           status: 'active',
           correlationId: 'corr-1',
+          createdAt: { $date: { $numberLong: '1780045783425' } },
           actionApplications: [{ parcelId: 'P1', code: 'C1', appliedFor: { quantity: { $numberDecimal: '10.5' } } }]
         }
       ]
@@ -276,7 +298,11 @@ describe('migration-runner', () => {
     })
 
     it('should handle missing payment or applications', () => {
-      const agreement = { agreementNumber: 'AGR1', sbi: '123' }
+      const agreement = { 
+        agreementNumber: 'AGR1', 
+        sbi: '123',
+        createdAt: { $date: { $numberLong: '1780045783425' } }
+      }
       const grant = { code: 'woodland' }
       const latestVersion = {
         status: 'pending',
@@ -286,6 +312,75 @@ describe('migration-runner', () => {
       const event = transformToEvent(agreement, grant, [latestVersion])
       expect(event.eventData.agreementValue).toBe(0)
       expect(event.eventData.options).toEqual([])
+    })
+
+    it('should use parcelItems when actionApplications is missing', () => {
+      const agreement = { 
+        agreementNumber: 'AGR1', 
+        sbi: '123',
+        createdAt: { $date: { $numberLong: '1780045783425' } }
+      }
+      const grant = { code: 'woodland' }
+      const latestVersion = {
+        status: 'active',
+        createdAt: { $date: { $numberLong: '1780045783425' } },
+        application: {
+          parcel: [
+            {
+              parcelId: 'P1',
+              actions: [{ code: 'C1', durationYears: { $numberInt: '3' } }]
+            }
+          ]
+        },
+        payment: {
+          parcelItems: {
+            item1: {
+              parcelId: 'P1',
+              code: 'C1',
+              quantity: { $numberDecimal: '10.5' },
+              annualPaymentPence: { $numberInt: '1000' }
+            }
+          },
+          agreementTotalPence: { $numberInt: '5000' }
+        }
+      }
+
+      const event = transformToEvent(agreement, grant, [latestVersion])
+      expect(event.eventData.options).toHaveLength(1)
+      expect(event.eventData.options[0].parcelReference).toBe('P1')
+      expect(event.eventData.options[0].optionCode).toBe('C1')
+      expect(event.eventData.options[0].optionValue).toBe(10)
+      expect(event.eventData.options[0].optionYear).toBe(3)
+      expect(event.eventData.options[0].optionEndDate).toBe('2029-05-29')
+    })
+
+    it('should derive optionYear from application data', () => {
+      const agreement = { 
+        agreementNumber: 'AGR1', 
+        sbi: '123',
+        createdAt: { $date: { $numberLong: '1780045783425' } }
+      }
+      const grant = { code: 'woodland' }
+      const latestVersion = {
+        status: 'active',
+        createdAt: { $date: { $numberLong: '1780045783425' } },
+        actionApplications: [{ parcelId: 'P1', code: 'C1', appliedFor: { quantity: { $numberDecimal: '10.5' } } }],
+        application: {
+          parcel: [
+            {
+              parcelId: 'P1',
+              actions: [{ code: 'C1', durationYears: { $numberInt: '5' } }]
+            }
+          ]
+        },
+        payment: {
+          annualTotalPence: { $numberInt: '1000' }
+        }
+      }
+
+      const event = transformToEvent(agreement, grant, [latestVersion])
+      expect(event.eventData.options[0].optionYear).toBe(5)
+      expect(event.eventData.options[0].optionEndDate).toBe('2031-05-29')
     })
   })
 })
