@@ -19,6 +19,7 @@ import {
   stopMessageSubscriber
 } from '#/messaging/inbound/reporting-event-queue-subscriber.js'
 import { setupS3Client } from '#/messaging/inbound/process-message.js'
+import { runMigration } from '#/common/helpers/migration-runner.js'
 
 export async function createServer() {
   const server = Hapi.server({
@@ -71,6 +72,9 @@ export async function createServer() {
     setupS3Client()
     configureAndStartMessaging(server.db, server.metrics)
     configureAndStartFeaturesMessaging()
+    runMigration(server.db, server.metrics, server.logger).catch((err) => {
+      server.logger.error(err, 'Startup migration failed')
+    })
   })
 
   server.events.on('stop', async () => {

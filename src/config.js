@@ -154,6 +154,21 @@ export const config = convict({
       default: 'x-cdp-request-id',
       env: 'TRACING_HEADER'
     }
+  },
+  agreementsApi: {
+    baseUrl: {
+      doc: 'Agreements API base URL',
+      format: String,
+      default: 'https://farming-grants-agreements-api.dev.cdp-int.defra.cloud',
+      env: 'AGREEMENTS_API_BASE_URL'
+    },
+    token: {
+      doc: 'Agreements API bearer token',
+      format: String,
+      default: '',
+      sensitive: true,
+      env: 'AGREEMENTS_API_TOKEN'
+    }
   }
 })
 
