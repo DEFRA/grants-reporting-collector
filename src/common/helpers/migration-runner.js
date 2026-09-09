@@ -1,6 +1,7 @@
 import { config } from '#/config.js'
 import { processInputMessage } from '#/messaging/inbound/process-message.js'
 
+const MIGRATION_COLLECTION = 'grant-migration'
 /**
  * Runs the grant migration process.
  * It checks if the migration has already been completed successfully or if the migration is applicable to the current environment.
@@ -14,7 +15,7 @@ import { processInputMessage } from '#/messaging/inbound/process-message.js'
  */
 export const runMigration = async (db, metrics, logger) => {
   const collection = db.collection('migration_status')
-  const status = await collection.findOne({ _id: 'grant-migration' })
+  const status = await collection.findOne({ _id: MIGRATION_COLLECTION })
 
   if (status?.status === 'success') {
     logger.info('Migration already completed successfully. Skipping.')
@@ -24,7 +25,7 @@ export const runMigration = async (db, metrics, logger) => {
   if (!config.get('agreementsApi.token')) {
     logger.info('Migration not applicable to this environment. Skipping.')
     await collection.updateOne(
-      { _id: 'grant-migration' },
+      { _id: MIGRATION_COLLECTION },
       { $set: { status: 'success', completedAt: new Date() } },
       { upsert: true }
     )
@@ -40,7 +41,7 @@ export const runMigration = async (db, metrics, logger) => {
     }
 
     await collection.updateOne(
-      { _id: 'grant-migration' },
+      { _id: MIGRATION_COLLECTION },
       { $set: { status: 'success', completedAt: new Date() } },
       { upsert: true }
     )
