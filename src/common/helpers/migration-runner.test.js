@@ -80,8 +80,8 @@ describe('migration-runner', () => {
           return Promise.resolve({
             ok: true,
             json: async () => ({
-              agreement: { 
-                agreementNumber: 'AGR1', 
+              agreement: {
+                agreementNumber: 'AGR1',
                 sbi: '123',
                 createdAt: { $date: { $numberLong: '1780045783425' } }
               },
@@ -126,8 +126,8 @@ describe('migration-runner', () => {
             return Promise.resolve({
               ok: true,
               json: async () => ({
-                agreement: { 
-                  agreementNumber: 'AGR1', 
+                agreement: {
+                  agreementNumber: 'AGR1',
                   sbi: '123',
                   createdAt: { $date: { $numberLong: '1780045783425' } }
                 },
@@ -140,8 +140,8 @@ describe('migration-runner', () => {
           return Promise.resolve({
             ok: true,
             json: async () => ({
-              agreement: { 
-                agreementNumber: 'AGR1', 
+              agreement: {
+                agreementNumber: 'AGR1',
                 sbi: '123',
                 createdAt: { $date: { $numberLong: '1780045783425' } }
               },
@@ -230,8 +230,8 @@ describe('migration-runner', () => {
 
   describe('transformToEvent', () => {
     it('should transform data correctly', () => {
-      const agreement = { 
-        agreementNumber: 'AGR1', 
+      const agreement = {
+        agreementNumber: 'AGR1',
         sbi: '123',
         createdAt: { $date: { $numberLong: '1780045783425' } }
       }
@@ -264,8 +264,8 @@ describe('migration-runner', () => {
     })
 
     it('should search backwards for missing payment or dates', () => {
-      const agreement = { 
-        agreementNumber: 'AGR1', 
+      const agreement = {
+        agreementNumber: 'AGR1',
         sbi: '123',
         createdAt: { $date: { $numberLong: '1780045783425' } }
       }
@@ -298,8 +298,8 @@ describe('migration-runner', () => {
     })
 
     it('should handle missing payment or applications', () => {
-      const agreement = { 
-        agreementNumber: 'AGR1', 
+      const agreement = {
+        agreementNumber: 'AGR1',
         sbi: '123',
         createdAt: { $date: { $numberLong: '1780045783425' } }
       }
@@ -315,8 +315,8 @@ describe('migration-runner', () => {
     })
 
     it('should use parcelItems when actionApplications is missing', () => {
-      const agreement = { 
-        agreementNumber: 'AGR1', 
+      const agreement = {
+        agreementNumber: 'AGR1',
         sbi: '123',
         createdAt: { $date: { $numberLong: '1780045783425' } }
       }
@@ -355,8 +355,8 @@ describe('migration-runner', () => {
     })
 
     it('should derive optionYear from application data', () => {
-      const agreement = { 
-        agreementNumber: 'AGR1', 
+      const agreement = {
+        agreementNumber: 'AGR1',
         sbi: '123',
         createdAt: { $date: { $numberLong: '1780045783425' } }
       }
