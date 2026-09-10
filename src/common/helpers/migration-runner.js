@@ -133,61 +133,26 @@ export function transformToEvent(agreement, grant, versions) {
     : 0
   const annualTotalPounds = annualTotalPence / 100
 
-  let options = (latestVersion.actionApplications || []).map((app) => {
-    const appliedForYear = Number.parseInt(
-      versionWithPayment.application?.parcel
-        ?.find((p) => p.parcelId === app.parcelId)
-        ?.actions?.find((a) => a.code === app.code)?.durationYears.$numberInt ?? '1'
-    )
-
-    const startDate =
-      versionWithStartDate.payment?.agreementStartDate ??
-      new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0, 10)
-    const endDate =
-      versionWithStartDate.payment?.agreementEndDate ??
-      incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
-    return {
-      parcelReference: app.parcelId || '',
-      parcelSizeUnderAgreement: app.appliedFor?.quantity?.$numberDecimal
-        ? Number.parseFloat(app.appliedFor.quantity.$numberDecimal)
-        : 0,
-      optionCode: app.code,
-      optionQuantity: app.appliedFor?.quantity?.$numberDecimal
-        ? Number.parseFloat(app.appliedFor.quantity.$numberDecimal)
-        : 0,
-      optionValue: annualTotalPounds,
-      optionYear: appliedForYear,
-      optionStartDate: startDate,
-      optionEndDate: endDate
-    }
-  })
+  let options = generateOptionsFromActionApplication(
+    latestVersion,
+    versionWithPayment,
+    versionWithStartDate,
+    annualTotalPounds
+  )
 
   if (options.length === 0 && versionWithPayment.payment) {
-    options = options.concat(
-      (Object.values(versionWithPayment.payment.parcelItems) || []).map((pi) => {
-        const appliedForYear = Number.parseInt(
-          versionWithPayment.application?.parcel
-            ?.find((p) => p.parcelId === pi.parcelId)
-            ?.actions?.find((a) => a.code === pi.code)?.durationYears.$numberInt ?? '1'
-        )
+    options = options.concat(generateOptionsFromPaymentInfo(versionWithPayment, versionWithStartDate))
+  }
 
-        const startDate =
-          versionWithStartDate.payment?.agreementStartDate ??
-          new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0, 10)
-        const endDate =
-          versionWithStartDate.payment?.agreementEndDate ??
-          incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
-        return {
-          parcelReference: pi.parcelId || '',
-          parcelSizeUnderAgreement: Number.parseFloat(pi.quantity.$numberDecimal),
-          optionCode: pi.code,
-          optionQuantity: Number.parseFloat(pi.quantity.$numberDecimal),
-          optionValue: pi.annualPaymentPence?.$numberInt ? Number.parseInt(pi.annualPaymentPence.$numberInt) / 100 : 0,
-          optionYear: appliedForYear,
-          optionStartDate: startDate,
-          optionEndDate: endDate
-        }
-      })
+  //final try
+  if (options.length === 0 && versionWithPayment.payment) {
+    options = options.concat(
+      generateOptionsFromActionApplication(
+        versionWithPayment, // Use versionWithPayment as the latest version if no options found in latestVersion
+        versionWithPayment,
+        versionWithStartDate,
+        annualTotalPounds
+      )
     )
   }
 
@@ -216,4 +181,67 @@ export function transformToEvent(agreement, grant, versions) {
       options
     }
   }
+}
+
+const generateOptionsFromActionApplication = (
+  latestVersion,
+  versionWithPayment,
+  versionWithStartDate,
+  annualTotalPounds
+) => {
+  return (latestVersion.actionApplications || []).map((app) => {
+    const appliedForYear = Number.parseInt(
+      versionWithPayment.application?.parcel
+        ?.find((p) => p.parcelId === app.parcelId)
+        ?.actions?.find((a) => a.code === app.code)?.durationYears.$numberInt ?? '1'
+    )
+
+    const startDate =
+      versionWithStartDate.payment?.agreementStartDate ??
+      new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0, 10)
+    const endDate =
+      versionWithStartDate.payment?.agreementEndDate ??
+      incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
+    return {
+      parcelReference: app.parcelId || '',
+      parcelSizeUnderAgreement: app.appliedFor?.quantity?.$numberDecimal
+        ? Number.parseFloat(app.appliedFor.quantity.$numberDecimal)
+        : 0,
+      optionCode: app.code,
+      optionQuantity: app.appliedFor?.quantity?.$numberDecimal
+        ? Number.parseFloat(app.appliedFor.quantity.$numberDecimal)
+        : 0,
+      optionValue: annualTotalPounds,
+      optionYear: appliedForYear,
+      optionStartDate: startDate,
+      optionEndDate: endDate
+    }
+  })
+}
+
+const generateOptionsFromPaymentInfo = (versionWithPayment, versionWithStartDate) => {
+  return (Object.values(versionWithPayment.payment.parcelItems) || []).map((pi) => {
+    const appliedForYear = Number.parseInt(
+      versionWithPayment.application?.parcel
+        ?.find((p) => p.parcelId === pi.parcelId)
+        ?.actions?.find((a) => a.code === pi.code)?.durationYears.$numberInt ?? '1'
+    )
+
+    const startDate =
+      versionWithStartDate.payment?.agreementStartDate ??
+      new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0, 10)
+    const endDate =
+      versionWithStartDate.payment?.agreementEndDate ??
+      incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
+    return {
+      parcelReference: pi.parcelId || '',
+      parcelSizeUnderAgreement: Number.parseFloat(pi.quantity.$numberDecimal),
+      optionCode: pi.code,
+      optionQuantity: Number.parseFloat(pi.quantity.$numberDecimal),
+      optionValue: pi.annualPaymentPence?.$numberInt ? Number.parseInt(pi.annualPaymentPence.$numberInt) / 100 : 0,
+      optionYear: appliedForYear,
+      optionStartDate: startDate,
+      optionEndDate: endDate
+    }
+  })
 }
