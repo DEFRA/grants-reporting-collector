@@ -150,7 +150,7 @@ function transformWoodlandToEvent(agreement, grant, versions) {
       const optionYear =
         startDate && endDate ? new Date(endDate).getFullYear() - new Date(startDate).getFullYear() : null
 
-      return {
+      return omitNulls({
         parcelReference: '',
         optionCode: item.code,
         optionQuantity: aggregateQuantity || 1,
@@ -159,7 +159,7 @@ function transformWoodlandToEvent(agreement, grant, versions) {
         optionStartDate: startDate,
         optionEndDate: endDate,
         optionYear
-      }
+      })
     })
     .filter((o) => o !== null)
 
@@ -169,7 +169,7 @@ function transformWoodlandToEvent(agreement, grant, versions) {
     version: '1.0.0',
     application: 'migration-runner',
     service: 'grants',
-    eventData: {
+    eventData: omitNulls({
       eventType: 'AGREEMENT_CREATED',
       agreementId: agreement.agreementNumber,
       agreementType: grant.code,
@@ -180,7 +180,7 @@ function transformWoodlandToEvent(agreement, grant, versions) {
         (payment.agreementTotalPence?.$numberInt ? Number.parseInt(payment.agreementTotalPence.$numberInt) : 0) / 100,
       sbi: agreement.sbi,
       options
-    }
+    })
   }
 }
 
@@ -212,7 +212,7 @@ function transformFpttToEvent(agreement, grant, versions) {
         return null
       }
 
-      return {
+      return omitNulls({
         parcelReference,
         parcelSizeUnderAgreement: pi.quantity?.$numberDecimal ? Number.parseFloat(pi.quantity.$numberDecimal) : 0,
         optionCode: pi.code,
@@ -221,7 +221,7 @@ function transformFpttToEvent(agreement, grant, versions) {
         optionYear,
         optionStartDate: startDate,
         optionEndDate: endDate
-      }
+      })
     })
     .filter((o) => o !== null)
 
@@ -231,7 +231,7 @@ function transformFpttToEvent(agreement, grant, versions) {
         return null
       }
 
-      return {
+      return omitNulls({
         parcelReference: '',
         optionCode: item.code,
         optionQuantity: 1,
@@ -239,7 +239,7 @@ function transformFpttToEvent(agreement, grant, versions) {
           (item.annualPaymentPence?.$numberInt ? Number.parseInt(item.annualPaymentPence.$numberInt) : 0) / 100,
         optionStartDate: startDate,
         optionEndDate: endDate
-      }
+      })
     })
     .filter((o) => o !== null)
 
@@ -249,7 +249,7 @@ function transformFpttToEvent(agreement, grant, versions) {
     version: '1.0.0',
     application: 'migration-runner',
     service: 'grants',
-    eventData: {
+    eventData: omitNulls({
       eventType: 'AGREEMENT_CREATED',
       agreementId: agreement.agreementNumber,
       agreementType: grant.code,
@@ -260,6 +260,10 @@ function transformFpttToEvent(agreement, grant, versions) {
         (payment.agreementTotalPence?.$numberInt ? Number.parseInt(payment.agreementTotalPence.$numberInt) : 0) / 100,
       sbi: agreement.sbi,
       options: [...parcelOptions, ...agreementOptions]
-    }
+    })
   }
+}
+
+function omitNulls(obj) {
+  return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== null))
 }

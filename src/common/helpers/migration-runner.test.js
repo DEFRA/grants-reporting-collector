@@ -308,7 +308,7 @@ describe('migration-runner', () => {
       expect(event.correlationId).toBe('corr-1')
     })
 
-    it('should include options with null dates for Woodland offered agreements with no dates', () => {
+    it('should include options without dates for Woodland offered agreements with no dates', () => {
       const agreement = { agreementNumber: 'AGR1', createdAt: { $date: { $numberLong: '1780045783425' } } }
       const grant = { code: 'woodland' }
       const latestVersion = {
@@ -319,11 +319,12 @@ describe('migration-runner', () => {
       }
       const event = transformToEvent(agreement, grant, [latestVersion])
       expect(event.eventData.options).toHaveLength(1)
-      expect(event.eventData.options[0]).toMatchObject({
-        optionCode: 'PA3',
-        optionStartDate: null,
-        optionEndDate: null
-      })
+      expect(event.eventData.options[0].optionCode).toBe('PA3')
+      expect(event.eventData.options[0].optionStartDate).toBeUndefined()
+      expect(event.eventData.options[0].optionEndDate).toBeUndefined()
+      expect(event.eventData.options[0].optionYear).toBeUndefined()
+      expect(event.eventData.agreementStartDate).toBeUndefined()
+      expect(event.eventData.agreementEndDate).toBeUndefined()
     })
 
     it('should transform FPTT data correctly', () => {
