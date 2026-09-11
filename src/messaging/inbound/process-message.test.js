@@ -37,7 +37,8 @@ describe('Process Message test', () => {
 
   const mockDb = {
     collection: vi.fn().mockReturnValue({
-      insertOne: vi.fn().mockResolvedValue({})
+      insertOne: vi.fn().mockResolvedValue({}),
+      deleteOne: vi.fn().mockResolvedValue({})
     })
   }
 
@@ -110,6 +111,66 @@ describe('Process Message test', () => {
     await expect(
       processInputMessage(mockDb, mockMetrics, validMessage, mockLogger, { messageId: '123' })
     ).rejects.toThrow('not successful')
+  })
+
+  it('should remove processed marker from MongoDB when S3 upload fails so that message processing can be retried', async () => {
+    const processedMessages = new Set()
+    mockDb.collection().insertOne.mockImplementation(async ({ _id }) => {
+      if (processedMessages.has(_id)) {
+        const error = new Error('Duplicate key')
+        error.code = MONGODB_DUPLICATE_KEY_ERROR
+        throw error
+      }
+      processedMessages.add(_id)
+      return { insertedId: _id }
+    })
+    mockDb.collection().deleteOne.mockImplementation(async ({ _id }) => {
+      processedMessages.delete(_id)
+      return { deletedCount: 1 }
+    })
+
+    const message = {
+      user: 'test-user',
+      correlationId: 'corr-123',
+      datetime: '2023-01-01T00:00:00Z',
+      version: '1.0.0',
+      application: 'test-app',
+      service: 'test-service',
+      eventData: {
+        eventType: 'AGREEMENT_CREATED',
+        agreementId: 'grant-123',
+        status: 'agreed'
+      }
+    }
+    const attributes = { messageId: 'retry-msg-123' }
+    const sentTimestamp = '2023-01-01T00:00:00Z'
+
+    // First attempt: uploadBlob fails
+    uploadBlob.mockRejectedValueOnce(new Error('S3 upload failed'))
+
+    await expect(
+      processInputMessage(mockDb, mockMetrics, message, mockLogger, attributes, sentTimestamp)
+    ).rejects.toThrow('S3 upload failed')
+
+    expect(mockLogger.error).toHaveBeenCalledWith('Failed to upload Reporting event to S3: S3 upload failed')
+    expect(mockDb.collection).toHaveBeenCalledWith('processed_messages')
+    expect(mockDb.collection().deleteOne).toHaveBeenCalledWith({ _id: 'retry-msg-123' })
+    expect(processedMessages.has('retry-msg-123')).toBe(false)
+
+    // Second attempt (retry): uploadBlob succeeds, and message is not marked as duplicate
+    uploadBlob.mockResolvedValueOnce(undefined)
+
+    await processInputMessage(mockDb, mockMetrics, message, mockLogger, attributes, sentTimestamp)
+
+    expect(uploadBlob).toHaveBeenCalledWith(
+      mockLogger,
+      'reporting-events/test-service/AGREEMENT_CREATED/2023-01-01T00:00:00Z.json',
+      JSON.stringify(message)
+    )
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      'Received New Reporting event (AGREEMENT_CREATED): {"messageId":"retry-msg-123"}'
+    )
+    expect(processedMessages.has('retry-msg-123')).toBe(true)
   })
 
   it('should throw error and log if reporting event is invalid', async () => {
