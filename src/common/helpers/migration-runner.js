@@ -115,46 +115,53 @@ async function migrateGrant(grantId, db, metrics, logger) {
   }
 }
 
-function incrementYear(dateString, yearsToAdd) {
-  const date = new Date(dateString)
-  date.setFullYear(date.getFullYear() + yearsToAdd)
-  return date.toISOString().substring(0, 10)
+export function transformToEvent(agreement, grant, versions) {
+  if (grant.code === 'woodland') {
+    return transformWoodlandToEvent(agreement, grant, versions)
+  }
+  if (grant.code === 'frps-private-beta') {
+    return transformFpttToEvent(agreement, grant, versions)
+  }
+  throw new Error(`Unsupported grant code: ${grant.code}`)
 }
 
-export function transformToEvent(agreement, grant, versions) {
+function transformWoodlandToEvent(agreement, grant, versions) {
   const latestVersion = versions[versions.length - 1]
   const reversedVersions = [...versions].reverse()
-
   const versionWithPayment = reversedVersions.find((v) => v.payment) || latestVersion
   const versionWithStartDate = reversedVersions.find((v) => v.payment?.agreementStartDate) || versionWithPayment
 
-  const annualTotalPence = versionWithPayment.payment?.annualTotalPence?.$numberInt
-    ? Number.parseInt(versionWithPayment.payment.annualTotalPence.$numberInt)
-    : 0
-  const annualTotalPounds = annualTotalPence / 100
+  const payment = versionWithPayment.payment || {}
+  const agreementLevelItems = Object.values(payment.agreementLevelItems || {})
 
-  let options = generateOptionsFromActionApplication(
-    latestVersion,
-    versionWithPayment,
-    versionWithStartDate,
-    annualTotalPounds
-  )
+  const options = agreementLevelItems
+    .map((item) => {
+      const matchingApps = (latestVersion.actionApplications || []).filter((app) => app.code === item.code)
+      const aggregateQuantity = matchingApps.reduce((acc, app) => {
+        return (
+          acc +
+          (app.appliedFor?.quantity?.$numberDecimal ? Number.parseFloat(app.appliedFor.quantity.$numberDecimal) : 0)
+        )
+      }, 0)
 
-  if (options.length === 0 && versionWithPayment.payment) {
-    options = options.concat(generateOptionsFromPaymentInfo(versionWithPayment, versionWithStartDate))
-  }
+      //these dates might not be available, if the agreement hasn't been accepted yet
+      const startDate = versionWithStartDate.payment?.agreementStartDate || null
+      const endDate = versionWithStartDate.payment?.agreementEndDate || null
+      const optionYear =
+        startDate && endDate ? new Date(endDate).getFullYear() - new Date(startDate).getFullYear() : null
 
-  //final try
-  if (options.length === 0 && versionWithPayment.payment) {
-    options = options.concat(
-      generateOptionsFromActionApplication(
-        versionWithPayment, // Use versionWithPayment as the latest version if no options found in latestVersion
-        versionWithPayment,
-        versionWithStartDate,
-        annualTotalPounds
-      )
-    )
-  }
+      return {
+        parcelReference: '',
+        optionCode: item.code,
+        optionQuantity: aggregateQuantity || 1,
+        optionValue:
+          (item.annualPaymentPence?.$numberInt ? Number.parseInt(item.annualPaymentPence.$numberInt) : 0) / 100,
+        optionStartDate: startDate,
+        optionEndDate: endDate,
+        optionYear
+      }
+    })
+    .filter((o) => o !== null)
 
   return {
     correlationId: latestVersion.correlationId || `migration-${agreement.agreementNumber}`,
@@ -167,81 +174,92 @@ export function transformToEvent(agreement, grant, versions) {
       agreementId: agreement.agreementNumber,
       agreementType: grant.code,
       agreementStatus: latestVersion.status,
-      ...(versionWithStartDate?.payment?.agreementStartDate && {
-        agreementStartDate: versionWithStartDate?.payment?.agreementStartDate
-      }),
-      ...(versionWithStartDate?.payment?.agreementEndDate && {
-        agreementEndDate: versionWithStartDate?.payment?.agreementEndDate
-      }),
+      agreementStartDate: versionWithStartDate.payment?.agreementStartDate || null,
+      agreementEndDate: versionWithStartDate.payment?.agreementEndDate || null,
       agreementValue:
-        (versionWithPayment.payment?.agreementTotalPence?.$numberInt
-          ? Number.parseInt(versionWithPayment.payment.agreementTotalPence.$numberInt)
-          : 0) / 100,
+        (payment.agreementTotalPence?.$numberInt ? Number.parseInt(payment.agreementTotalPence.$numberInt) : 0) / 100,
       sbi: agreement.sbi,
       options
     }
   }
 }
 
-const generateOptionsFromActionApplication = (
-  latestVersion,
-  versionWithPayment,
-  versionWithStartDate,
-  annualTotalPounds
-) => {
-  return (latestVersion.actionApplications || []).map((app) => {
-    const appliedForYear = Number.parseInt(
-      versionWithPayment.application?.parcel
-        ?.find((p) => p.parcelId === app.parcelId)
-        ?.actions?.find((a) => a.code === app.code)?.durationYears.$numberInt ?? '1'
-    )
+function transformFpttToEvent(agreement, grant, versions) {
+  const latestVersion = versions[versions.length - 1]
+  const reversedVersions = [...versions].reverse()
+  const versionWithPayment = reversedVersions.find((v) => v.payment) || latestVersion
+  const versionWithStartDate = reversedVersions.find((v) => v.payment?.agreementStartDate) || versionWithPayment
 
-    const startDate =
-      versionWithStartDate.payment?.agreementStartDate ??
-      new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0, 10)
-    const endDate =
-      versionWithStartDate.payment?.agreementEndDate ??
-      incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
-    return {
-      parcelReference: app.parcelId || '',
-      parcelSizeUnderAgreement: app.appliedFor?.quantity?.$numberDecimal
-        ? Number.parseFloat(app.appliedFor.quantity.$numberDecimal)
-        : 0,
-      optionCode: app.code,
-      optionQuantity: app.appliedFor?.quantity?.$numberDecimal
-        ? Number.parseFloat(app.appliedFor.quantity.$numberDecimal)
-        : 0,
-      optionValue: annualTotalPounds,
-      optionYear: appliedForYear,
-      optionStartDate: startDate,
-      optionEndDate: endDate
+  const payment = versionWithPayment.payment || {}
+
+  const startDate = versionWithStartDate.payment?.agreementStartDate || null
+  const endDate = versionWithStartDate.payment?.agreementEndDate || null
+
+  const parcelOptions = Object.values(payment.parcelItems || {})
+    .map((pi) => {
+      const parcelReference =
+        pi.sheetId && pi.parcelId ? `${pi.sheetId}-${pi.parcelId}` : pi.parcelId || pi.sheetId || ''
+
+      const applicationParcel = latestVersion.application?.parcel?.find(
+        (p) => p.parcelId === pi.parcelId || p.sheetId === pi.sheetId
+      )
+      const applicationAction = applicationParcel?.actions?.find((a) => a.code === pi.code)
+      const optionYear = applicationAction?.durationYears?.$numberInt
+        ? Number.parseInt(applicationAction.durationYears.$numberInt)
+        : 1
+
+      if (!startDate || !endDate) {
+        return null
+      }
+
+      return {
+        parcelReference,
+        parcelSizeUnderAgreement: pi.quantity?.$numberDecimal ? Number.parseFloat(pi.quantity.$numberDecimal) : 0,
+        optionCode: pi.code,
+        optionQuantity: pi.quantity?.$numberDecimal ? Number.parseFloat(pi.quantity.$numberDecimal) : 0,
+        optionValue: (pi.annualPaymentPence?.$numberInt ? Number.parseInt(pi.annualPaymentPence.$numberInt) : 0) / 100,
+        optionYear,
+        optionStartDate: startDate,
+        optionEndDate: endDate
+      }
+    })
+    .filter((o) => o !== null)
+
+  const agreementOptions = Object.values(payment.agreementLevelItems || {})
+    .map((item) => {
+      if (!startDate || !endDate) {
+        return null
+      }
+
+      return {
+        parcelReference: '',
+        optionCode: item.code,
+        optionQuantity: 1,
+        optionValue:
+          (item.annualPaymentPence?.$numberInt ? Number.parseInt(item.annualPaymentPence.$numberInt) : 0) / 100,
+        optionStartDate: startDate,
+        optionEndDate: endDate
+      }
+    })
+    .filter((o) => o !== null)
+
+  return {
+    correlationId: latestVersion.correlationId || `migration-${agreement.agreementNumber}`,
+    datetime: new Date(Number.parseInt(agreement.createdAt?.$date?.$numberLong)).toISOString(),
+    version: '1.0.0',
+    application: 'migration-runner',
+    service: 'grants',
+    eventData: {
+      eventType: 'AGREEMENT_CREATED',
+      agreementId: agreement.agreementNumber,
+      agreementType: grant.code,
+      agreementStatus: latestVersion.status,
+      agreementStartDate: versionWithStartDate.payment?.agreementStartDate || null,
+      agreementEndDate: versionWithStartDate.payment?.agreementEndDate || null,
+      agreementValue:
+        (payment.agreementTotalPence?.$numberInt ? Number.parseInt(payment.agreementTotalPence.$numberInt) : 0) / 100,
+      sbi: agreement.sbi,
+      options: [...parcelOptions, ...agreementOptions]
     }
-  })
-}
-
-const generateOptionsFromPaymentInfo = (versionWithPayment, versionWithStartDate) => {
-  return (Object.values(versionWithPayment.payment.parcelItems) || []).map((pi) => {
-    const appliedForYear = Number.parseInt(
-      versionWithPayment.application?.parcel
-        ?.find((p) => p.parcelId === pi.parcelId)
-        ?.actions?.find((a) => a.code === pi.code)?.durationYears.$numberInt ?? '1'
-    )
-
-    const startDate =
-      versionWithStartDate.payment?.agreementStartDate ??
-      new Date(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong)).toISOString().substring(0, 10)
-    const endDate =
-      versionWithStartDate.payment?.agreementEndDate ??
-      incrementYear(Number.parseInt(versionWithPayment.createdAt?.$date.$numberLong), appliedForYear)
-    return {
-      parcelReference: pi.parcelId || '',
-      parcelSizeUnderAgreement: Number.parseFloat(pi.quantity.$numberDecimal),
-      optionCode: pi.code,
-      optionQuantity: Number.parseFloat(pi.quantity.$numberDecimal),
-      optionValue: pi.annualPaymentPence?.$numberInt ? Number.parseInt(pi.annualPaymentPence.$numberInt) / 100 : 0,
-      optionYear: appliedForYear,
-      optionStartDate: startDate,
-      optionEndDate: endDate
-    }
-  })
+  }
 }

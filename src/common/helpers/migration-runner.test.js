@@ -229,7 +229,7 @@ describe('migration-runner', () => {
   })
 
   describe('transformToEvent', () => {
-    it('should transform data correctly', () => {
+    it('should transform Woodland data correctly', () => {
       const agreement = {
         agreementNumber: 'AGR1',
         sbi: '123',
@@ -239,10 +239,17 @@ describe('migration-runner', () => {
       const latestVersion = {
         status: 'active',
         createdAt: { $date: { $numberLong: '1780045783425' } },
-        actionApplications: [{ parcelId: 'P1', code: 'C1', appliedFor: { quantity: { $numberDecimal: '10.5' } } }],
+        actionApplications: [{ parcelId: 'P1', code: 'PA3', appliedFor: { quantity: { $numberDecimal: '10.5' } } }],
         payment: {
-          annualTotalPence: { $numberInt: '1000' },
-          agreementTotalPence: { $numberInt: '5000' }
+          agreementStartDate: '2026-06-01',
+          agreementEndDate: '2029-05-31',
+          agreementLevelItems: {
+            1: {
+              code: 'PA3',
+              annualPaymentPence: { $numberInt: '150000' }
+            }
+          },
+          agreementTotalPence: { $numberInt: '150000' }
         }
       }
 
@@ -252,18 +259,17 @@ describe('migration-runner', () => {
       expect(event.eventData.agreementId).toBe('AGR1')
       expect(event.eventData.agreementType).toBe('woodland')
       expect(event.eventData.sbi).toBe('123')
-      expect(event.eventData.agreementValue).toBe(50)
+      expect(event.eventData.agreementValue).toBe(1500)
       expect(event.eventData.options).toHaveLength(1)
-      expect(event.eventData.options[0].parcelReference).toBe('P1')
-      expect(event.eventData.options[0].optionCode).toBe('C1')
+      expect(event.eventData.options[0].parcelReference).toBe('')
+      expect(event.eventData.options[0].optionCode).toBe('PA3')
       expect(event.eventData.options[0].optionQuantity).toBe(10.5)
-      expect(event.eventData.options[0].optionValue).toBe(10)
-      expect(event.eventData.options[0].optionYear).toBe(1)
-      expect(event.eventData.options[0].optionStartDate).toBe('2026-05-29')
-      expect(event.eventData.options[0].optionEndDate).toBe('2027-05-29')
+      expect(event.eventData.options[0].optionValue).toBe(1500)
+      expect(event.eventData.options[0].optionStartDate).toBe('2026-06-01')
+      expect(event.eventData.options[0].optionEndDate).toBe('2029-05-31')
     })
 
-    it('should search backwards for missing payment or dates', () => {
+    it('should search backwards for missing Woodland payment or dates', () => {
       const agreement = {
         agreementNumber: 'AGR1',
         sbi: '123',
@@ -276,15 +282,20 @@ describe('migration-runner', () => {
           payment: {
             agreementStartDate: '2023-01-01',
             agreementEndDate: '2024-01-01',
-            annualTotalPence: { $numberInt: '1000' },
-            agreementTotalPence: { $numberInt: '5000' }
+            agreementLevelItems: {
+              1: {
+                code: 'PA3',
+                annualPaymentPence: { $numberInt: '150000' }
+              }
+            },
+            agreementTotalPence: { $numberInt: '150000' }
           }
         },
         {
           status: 'active',
           correlationId: 'corr-1',
           createdAt: { $date: { $numberLong: '1780045783425' } },
-          actionApplications: [{ parcelId: 'P1', code: 'C1', appliedFor: { quantity: { $numberDecimal: '10.5' } } }]
+          actionApplications: [{ parcelId: 'P1', code: 'PA3', appliedFor: { quantity: { $numberDecimal: '10.5' } } }]
         }
       ]
 
@@ -292,95 +303,97 @@ describe('migration-runner', () => {
       expect(event.eventData.agreementStatus).toBe('active')
       expect(event.eventData.agreementStartDate).toBe('2023-01-01')
       expect(event.eventData.agreementEndDate).toBe('2024-01-01')
-      expect(event.eventData.agreementValue).toBe(50)
-      expect(event.eventData.options[0].optionValue).toBe(10)
+      expect(event.eventData.agreementValue).toBe(1500)
+      expect(event.eventData.options[0].optionValue).toBe(1500)
       expect(event.correlationId).toBe('corr-1')
     })
 
-    it('should handle missing payment or applications', () => {
-      const agreement = {
-        agreementNumber: 'AGR1',
-        sbi: '123',
-        createdAt: { $date: { $numberLong: '1780045783425' } }
-      }
+    it('should include options with null dates for Woodland offered agreements with no dates', () => {
+      const agreement = { agreementNumber: 'AGR1', createdAt: { $date: { $numberLong: '1780045783425' } } }
       const grant = { code: 'woodland' }
       const latestVersion = {
-        status: 'pending',
-        createdAt: { $date: { $numberLong: '1780045783425' } }
-      }
-
-      const event = transformToEvent(agreement, grant, [latestVersion])
-      expect(event.eventData.agreementValue).toBe(0)
-      expect(event.eventData.options).toEqual([])
-    })
-
-    it('should use parcelItems when actionApplications is missing', () => {
-      const agreement = {
-        agreementNumber: 'AGR1',
-        sbi: '123',
-        createdAt: { $date: { $numberLong: '1780045783425' } }
-      }
-      const grant = { code: 'woodland' }
-      const latestVersion = {
-        status: 'active',
-        createdAt: { $date: { $numberLong: '1780045783425' } },
-        application: {
-          parcel: [
-            {
-              parcelId: 'P1',
-              actions: [{ code: 'C1', durationYears: { $numberInt: '3' } }]
-            }
-          ]
-        },
+        status: 'offered',
         payment: {
-          parcelItems: {
-            item1: {
-              parcelId: 'P1',
-              code: 'C1',
-              quantity: { $numberDecimal: '10.5' },
-              annualPaymentPence: { $numberInt: '1000' }
-            }
-          },
-          agreementTotalPence: { $numberInt: '5000' }
+          agreementLevelItems: { 1: { code: 'PA3' } }
         }
       }
-
       const event = transformToEvent(agreement, grant, [latestVersion])
       expect(event.eventData.options).toHaveLength(1)
-      expect(event.eventData.options[0].parcelReference).toBe('P1')
-      expect(event.eventData.options[0].optionCode).toBe('C1')
-      expect(event.eventData.options[0].optionValue).toBe(10)
-      expect(event.eventData.options[0].optionYear).toBe(3)
-      expect(event.eventData.options[0].optionEndDate).toBe('2029-05-29')
+      expect(event.eventData.options[0]).toMatchObject({
+        optionCode: 'PA3',
+        optionStartDate: null,
+        optionEndDate: null
+      })
     })
 
-    it('should derive optionYear from application data', () => {
+    it('should transform FPTT data correctly', () => {
       const agreement = {
-        agreementNumber: 'AGR1',
-        sbi: '123',
-        createdAt: { $date: { $numberLong: '1780045783425' } }
+        agreementNumber: 'FPTT1',
+        sbi: '456',
+        createdAt: { $date: { $numberLong: '1781614946244' } }
       }
-      const grant = { code: 'woodland' }
+      const grant = { code: 'frps-private-beta' }
       const latestVersion = {
-        status: 'active',
-        createdAt: { $date: { $numberLong: '1780045783425' } },
-        actionApplications: [{ parcelId: 'P1', code: 'C1', appliedFor: { quantity: { $numberDecimal: '10.5' } } }],
+        status: 'accepted',
         application: {
           parcel: [
-            {
-              parcelId: 'P1',
-              actions: [{ code: 'C1', durationYears: { $numberInt: '5' } }]
-            }
+            { parcelId: '1059', sheetId: 'SD7858', actions: [{ code: 'CMOR1', durationYears: { $numberInt: '3' } }] }
           ]
         },
         payment: {
-          annualTotalPence: { $numberInt: '1000' }
+          agreementStartDate: '2026-07-01',
+          agreementEndDate: '2027-06-30',
+          parcelItems: {
+            1: {
+              code: 'CMOR1',
+              sheetId: 'SD7858',
+              parcelId: '1059',
+              quantity: { $numberDecimal: '1.4236' },
+              annualPaymentPence: { $numberInt: '1509' }
+            }
+          },
+          agreementLevelItems: {
+            1: {
+              code: 'AGR_FEE',
+              annualPaymentPence: { $numberInt: '27200' }
+            }
+          },
+          agreementTotalPence: { $numberInt: '28709' }
         }
       }
 
       const event = transformToEvent(agreement, grant, [latestVersion])
-      expect(event.eventData.options[0].optionYear).toBe(5)
-      expect(event.eventData.options[0].optionEndDate).toBe('2031-05-29')
+      expect(event.eventData.agreementType).toBe('frps-private-beta')
+      expect(event.eventData.options).toHaveLength(2)
+
+      const parcelOption = event.eventData.options.find((o) => o.parcelReference === 'SD7858-1059')
+      expect(parcelOption.optionCode).toBe('CMOR1')
+      expect(parcelOption.optionQuantity).toBe(1.4236)
+      expect(parcelOption.optionValue).toBe(15.09)
+      expect(parcelOption.optionYear).toBe(3)
+      expect(parcelOption.optionStartDate).toBe('2026-07-01')
+
+      const agreementOption = event.eventData.options.find((o) => o.parcelReference === '')
+      expect(agreementOption.optionCode).toBe('AGR_FEE')
+      expect(agreementOption.optionValue).toBe(272)
+    })
+    it('should emit empty options for FPTT offered agreements with no dates', () => {
+      const agreement = { agreementNumber: 'FPTT1', createdAt: { $date: { $numberLong: '1781614946244' } } }
+      const grant = { code: 'frps-private-beta' }
+      const latestVersion = {
+        status: 'offered',
+        payment: {
+          parcelItems: { 1: { code: 'CMOR1' } },
+          agreementLevelItems: { 1: { code: 'AGR_FEE' } }
+        }
+      }
+      const event = transformToEvent(agreement, grant, [latestVersion])
+      expect(event.eventData.options).toEqual([])
+    })
+    it('should throw error for unsupported grant code', () => {
+      const agreement = { agreementNumber: 'AGR1' }
+      const grant = { code: 'unknown' }
+      expect(() => transformToEvent(agreement, grant, [{}])).toThrow('Unsupported grant code: unknown')
     })
   })
 })

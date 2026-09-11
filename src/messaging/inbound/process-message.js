@@ -24,7 +24,14 @@ export const processInputMessage = async (db, metrics, message, logger, attribut
   logger.info(`Received New Reporting event (${eventType}): ${JSON.stringify(attributes)}`)
   await metrics.counter('reporting-message-received-success')
 
-  await uploadBlob(logger, `reporting-events/${service}/${eventType}/${sentTimestamp}.json`, JSON.stringify(value))
+  try {
+    await uploadBlob(logger, `reporting-events/${service}/${eventType}/${sentTimestamp}.json`, JSON.stringify(value))
+  } catch (err) {
+    logger.error(`Failed to upload Reporting event to S3: ${err.message}`)
+    //rollback processed indicator if upload failed
+    await db.collection('processed_messages').deleteOne({ _id: messageId })
+    throw err
+  }
 }
 
 const checkForDuplicate = async (db, logger, messageId, agreementId, eventType) => {
