@@ -24,6 +24,9 @@ updates:
   # Update GitHub Actions
   - package-ecosystem: github-actions
     directory: /
+    ignore:
+        - dependency-name: 'DEFRA/cdp-build-action/build'
+        - dependency-name: 'DEFRA/cdp-build-action/build-hotfix'
     schedule:
       interval: weekly
 
