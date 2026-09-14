@@ -31,11 +31,11 @@
   "author": "Defra DDTS",
   "license": "OGL-UK-3.0",
   "dependencies": {
-    "@aws-sdk/client-s3": "3.1114.0",
-    "@aws-sdk/credential-providers": "3.1114.0",
+    "@aws-sdk/client-s3": "3.1126.0",
+    "@aws-sdk/credential-providers": "3.1126.0",
     "@defra/cdp-auditing": "0.6.1",
     "@defra/cdp-metrics": "0.6.0",
-    "@defra/grants-config-utils": "1.3.1",
+    "@defra/grants-config-utils": "1.3.2",
     "@defra/grants-reporting-publisher": "0.1.2",
     "@defra/hapi-secure-context": "0.4.0",
     "@defra/hapi-tracing": "1.30.0",
@@ -47,9 +47,9 @@
     "convict-format-with-validator": "6.2.0",
     "hapi-pino": "13.0.0",
     "hapi-pulse": "4.0.0",
-    "joi": "18.2.3",
+    "joi": "18.2.8",
     "mongo-locks": "3.2.0",
-    "mongodb": "7.5.0",
+    "mongodb": "7.6.0",
     "pino": "10.3.1"
   },
   "devDependencies": {
