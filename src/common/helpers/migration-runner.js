@@ -110,6 +110,14 @@ async function migrateGrant(grantId, db, metrics, logger) {
     const attributes = { messageId: `migration-${grantId}` }
     const sentTimestamp = agreementData.createdAt?.$date?.$numberLong || new Date().toISOString()
     await processInputMessage(db, metrics, event, logger, attributes, sentTimestamp)
+
+    const statusEvents = generateStatusChangedEvents(agreementData, allVersions)
+    for (let i = 0; i < statusEvents.length; i++) {
+      const statusEvent = statusEvents[i]
+      const statusAttributes = { messageId: `migration-${grantId}-status-${i}` }
+      const statusTimestamp = statusEvent.eventData.statusDate
+      await processInputMessage(db, metrics, statusEvent, logger, statusAttributes, statusTimestamp)
+    }
   } else {
     logger.warn(`No versions found for grant ${grantId}, skipping.`)
   }
@@ -266,4 +274,32 @@ function transformFpttToEvent(agreement, grant, versions) {
 
 function omitNulls(obj) {
   return Object.fromEntries(Object.entries(obj).filter(([_, v]) => v !== null))
+}
+
+export function generateStatusChangedEvents(agreement, versions) {
+  const events = []
+  let previousStatus = null
+
+  for (const version of versions) {
+    if (version.status && version.status !== previousStatus) {
+
+      events.push({
+        correlationId: version.correlationId || `migration-${agreement.agreementNumber}-status-${events.length}`,
+        datetime: new Date(Number.parseInt(agreement.createdAt?.$date?.$numberLong)).toISOString(),
+        version: '1.0.0',
+        application: 'migration-runner',
+        service: 'grants',
+        eventData: omitNulls({
+          eventType: 'AGREEMENT_STATUS_CHANGED',
+          agreementId: agreement.agreementNumber,
+          agreementStatus: version.status,
+          statusDate: new Date(Number.parseInt(version.updatedAt?.$date?.$numberLong)).toISOString(),
+          userId: null
+        })
+      })
+      previousStatus = version.status
+    }
+  }
+
+  return events
 }

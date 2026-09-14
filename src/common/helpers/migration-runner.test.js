@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { runMigration, transformToEvent } from './migration-runner.js'
+import { runMigration, transformToEvent, generateStatusChangedEvents } from './migration-runner.js'
 import { processInputMessage } from '#/messaging/inbound/process-message.js'
 import { config } from '#/config.js'
 
@@ -86,7 +86,13 @@ describe('migration-runner', () => {
                 createdAt: { $date: { $numberLong: '1780045783425' } }
               },
               grant: { code: 'woodland' },
-              versions: [{ status: 'active', actionApplications: [] }],
+              versions: [
+                {
+                  status: 'active',
+                  actionApplications: [],
+                  updatedAt: { $date: { $numberLong: '1780045783425' } }
+                }
+              ],
               nextOffset: null
             })
           })
@@ -132,7 +138,7 @@ describe('migration-runner', () => {
                   createdAt: { $date: { $numberLong: '1780045783425' } }
                 },
                 grant: { code: 'woodland' },
-                versions: [{ status: 'v1' }],
+                versions: [{ status: 'v1', updatedAt: { $date: { $numberLong: '1780045783425' } } }],
                 nextOffset: 1
               })
             })
@@ -146,7 +152,7 @@ describe('migration-runner', () => {
                 createdAt: { $date: { $numberLong: '1780045783425' } }
               },
               grant: { code: 'woodland' },
-              versions: [{ status: 'v2' }],
+              versions: [{ status: 'v2', updatedAt: { $date: { $numberLong: '1780045784425' } } }],
               nextOffset: null
             })
           })
@@ -395,6 +401,58 @@ describe('migration-runner', () => {
       const agreement = { agreementNumber: 'AGR1' }
       const grant = { code: 'unknown' }
       expect(() => transformToEvent(agreement, grant, [{}])).toThrow('Unsupported grant code: unknown')
+    })
+  })
+
+  describe('generateStatusChangedEvents', () => {
+    it('should generate events when status changes', () => {
+      const agreement = {
+        agreementNumber: 'AGR1',
+        createdAt: { $date: { $numberLong: '1780045783425' } }
+      }
+      const versions = [
+        {
+          status: 'offered',
+          updatedAt: { $date: { $numberLong: '1780045783425' } },
+          payment: {
+            agreementTotalPence: { $numberInt: '10000' },
+            agreementStartDate: '2023-01-01',
+            agreementEndDate: '2024-01-01'
+          }
+        },
+        {
+          status: 'offered', // Same status, no event
+          updatedAt: { $date: { $numberLong: '1780045784425' } }
+        },
+        {
+          status: 'accepted', // Status changed
+          updatedAt: { $date: { $numberLong: '1780045785425' } },
+          payment: {
+            agreementTotalPence: { $numberInt: '15000' }
+          }
+        }
+      ]
+
+      const events = generateStatusChangedEvents(agreement, versions)
+      expect(events).toHaveLength(2)
+
+      expect(events[0].eventData.eventType).toBe('AGREEMENT_STATUS_CHANGED')
+      expect(events[0].eventData.agreementStatus).toBe('offered')
+      expect(events[0].eventData.statusDate).toBe(new Date(1780045783425).toISOString())
+      expect(events[0].eventData.userId).toBeUndefined()
+
+      expect(events[1].eventData.agreementStatus).toBe('accepted')
+      expect(events[1].eventData.statusDate).toBe(new Date(1780045785425).toISOString())
+    })
+
+    it('should skip versions without status', () => {
+      const agreement = {
+        agreementNumber: 'AGR1',
+        createdAt: { $date: { $numberLong: '1780045783425' } }
+      }
+      const versions = [{ updatedAt: { $date: { $numberLong: '1780045783425' } } }]
+      const events = generateStatusChangedEvents(agreement, versions)
+      expect(events).toHaveLength(0)
     })
   })
 })
