@@ -282,7 +282,6 @@ export function generateStatusChangedEvents(agreement, versions) {
 
   for (const version of versions) {
     if (version.status && version.status !== previousStatus) {
-
       events.push({
         correlationId: version.correlationId || `migration-${agreement.agreementNumber}-status-${events.length}`,
         datetime: new Date(Number.parseInt(agreement.createdAt?.$date?.$numberLong)).toISOString(),
