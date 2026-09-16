@@ -112,10 +112,9 @@ async function migrateGrant(grantId, db, metrics, logger) {
     await processInputMessage(db, metrics, event, logger, attributes, sentTimestamp)
 
     const statusEvents = generateStatusChangedEvents(agreementData, allVersions)
-    for (let i = 0; i < statusEvents.length; i++) {
-      const statusEvent = statusEvents[i]
-      const statusAttributes = { messageId: `migration-${grantId}-status-${i}` }
-      const statusTimestamp = statusEvent.eventData.statusDate
+    for (const statusEvent of statusEvents) {
+      const statusTimestamp = new Date(statusEvent.eventData.statusDate).getTime()
+      const statusAttributes = { messageId: `migration-${grantId}-status-${statusTimestamp}` }
       await processInputMessage(db, metrics, statusEvent, logger, statusAttributes, statusTimestamp)
     }
   } else {
