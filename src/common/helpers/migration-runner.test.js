@@ -101,8 +101,25 @@ describe('migration-runner', () => {
       })
 
       await runMigration(mockDb, mockMetrics, mockLogger)
-
-      expect(processInputMessage).toHaveBeenCalled()
+      expect(processInputMessage).toHaveBeenCalledTimes(2)
+      // Main agreement event
+      expect(processInputMessage).toHaveBeenCalledWith(
+        mockDb,
+        mockMetrics,
+        expect.objectContaining({ eventData: expect.objectContaining({ eventType: 'AGREEMENT_CREATED' }) }),
+        mockLogger,
+        { messageId: 'migration-grant-1' },
+        '1780045783425'
+      )
+      // Status change event
+      expect(processInputMessage).toHaveBeenCalledWith(
+        mockDb,
+        mockMetrics,
+        expect.objectContaining({ eventData: expect.objectContaining({ eventType: 'AGREEMENT_STATUS_CHANGED' }) }),
+        mockLogger,
+        { messageId: 'migration-grant-1-status-1780045783425' },
+        1780045783425
+      )
       expect(mockDb.updateOne).toHaveBeenCalledWith(
         { _id: 'grant-migration' },
         expect.objectContaining({ $set: expect.objectContaining({ status: 'success' }) }),
@@ -161,16 +178,33 @@ describe('migration-runner', () => {
       })
 
       await runMigration(mockDb, mockMetrics, mockLogger)
-
+      expect(processInputMessage).toHaveBeenCalledTimes(3)
+      // Main agreement event (latest is v2)
       expect(processInputMessage).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.anything(),
-        expect.objectContaining({
-          eventData: expect.objectContaining({ agreementStatus: 'v2' })
-        }),
-        expect.anything(),
-        expect.anything(),
-        expect.anything()
+        mockDb,
+        mockMetrics,
+        expect.objectContaining({ eventData: expect.objectContaining({ agreementStatus: 'v2' }) }),
+        mockLogger,
+        { messageId: 'migration-grant-1' },
+        '1780045783425'
+      )
+      // Status change event v1
+      expect(processInputMessage).toHaveBeenCalledWith(
+        mockDb,
+        mockMetrics,
+        expect.objectContaining({ eventData: expect.objectContaining({ agreementStatus: 'v1' }) }),
+        mockLogger,
+        { messageId: 'migration-grant-1-status-1780045783425' },
+        1780045783425
+      )
+      // Status change event v2
+      expect(processInputMessage).toHaveBeenCalledWith(
+        mockDb,
+        mockMetrics,
+        expect.objectContaining({ eventData: expect.objectContaining({ agreementStatus: 'v2' }) }),
+        mockLogger,
+        { messageId: 'migration-grant-1-status-1780045784425' },
+        1780045784425
       )
     })
 
