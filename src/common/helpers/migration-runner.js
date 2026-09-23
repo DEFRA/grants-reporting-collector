@@ -132,6 +132,64 @@ export function transformToEvent(agreement, grant, versions) {
   throw new Error(`Unsupported grant code: ${grant.code}`)
 }
 
+export function formatParcelReference(sheetId, parcelId) {
+  if (sheetId && parcelId) {
+    return sheetId === parcelId ? parcelId : `${sheetId}-${parcelId}`
+  }
+  return parcelId || sheetId || ''
+}
+
+export function extractParcels(latestVersion) {
+  if (!latestVersion) {
+    return []
+  }
+  const parcels = new Set()
+
+  getParcelsFromParcelElement(latestVersion, parcels)
+
+  getParcelsFromActionApplications(latestVersion, parcels)
+
+  getParcelsFromParcelItems(latestVersion, parcels)
+
+  return Array.from(parcels)
+}
+
+function getParcelsFromParcelItems(latestVersion, parcels) {
+  if (parcels.size === 0 && latestVersion.payment?.parcelItems) {
+    const parcelItems = Array.isArray(latestVersion.payment.parcelItems)
+      ? latestVersion.payment.parcelItems
+      : Object.values(latestVersion.payment.parcelItems)
+    for (const pi of parcelItems) {
+      const ref = formatParcelReference(pi.sheetId, pi.parcelId)
+      if (ref) {
+        parcels.add(ref)
+      }
+    }
+  }
+}
+
+function getParcelsFromActionApplications(latestVersion, parcels) {
+  if (parcels.size === 0 && Array.isArray(latestVersion.actionApplications)) {
+    for (const app of latestVersion.actionApplications) {
+      const ref = formatParcelReference(app.sheetId, app.parcelId)
+      if (ref) {
+        parcels.add(ref)
+      }
+    }
+  }
+}
+
+function getParcelsFromParcelElement(latestVersion, parcels) {
+  if (Array.isArray(latestVersion.application?.parcel)) {
+    for (const p of latestVersion.application.parcel) {
+      const ref = formatParcelReference(p.sheetId, p.parcelId)
+      if (ref) {
+        parcels.add(ref)
+      }
+    }
+  }
+}
+
 function transformWoodlandToEvent(agreement, grant, versions) {
   const latestVersion = versions[versions.length - 1]
   const reversedVersions = [...versions].reverse()
@@ -170,6 +228,8 @@ function transformWoodlandToEvent(agreement, grant, versions) {
     })
     .filter((o) => o !== null)
 
+  const parcels = extractParcels(latestVersion)
+
   return {
     correlationId: latestVersion.correlationId || `migration-${agreement.agreementNumber}`,
     datetime: new Date(Number.parseInt(agreement.createdAt?.$date?.$numberLong)).toISOString(),
@@ -186,6 +246,7 @@ function transformWoodlandToEvent(agreement, grant, versions) {
       agreementValue:
         (payment.agreementTotalPence?.$numberInt ? Number.parseInt(payment.agreementTotalPence.$numberInt) : 0) / 100,
       sbi: agreement.sbi,
+      parcels,
       options
     })
   }
@@ -204,8 +265,7 @@ function transformFpttToEvent(agreement, grant, versions) {
 
   const parcelOptions = Object.values(payment.parcelItems || {})
     .map((pi) => {
-      const parcelReference =
-        pi.sheetId && pi.parcelId ? `${pi.sheetId}-${pi.parcelId}` : pi.parcelId || pi.sheetId || ''
+      const parcelReference = formatParcelReference(pi.sheetId, pi.parcelId)
 
       const applicationParcel = latestVersion.application?.parcel?.find(
         (p) => p.parcelId === pi.parcelId || p.sheetId === pi.sheetId
@@ -250,6 +310,8 @@ function transformFpttToEvent(agreement, grant, versions) {
     })
     .filter((o) => o !== null)
 
+  const parcels = extractParcels(latestVersion)
+
   return {
     correlationId: latestVersion.correlationId || `migration-${agreement.agreementNumber}`,
     datetime: new Date(Number.parseInt(agreement.createdAt?.$date?.$numberLong)).toISOString(),
@@ -266,6 +328,7 @@ function transformFpttToEvent(agreement, grant, versions) {
       agreementValue:
         (payment.agreementTotalPence?.$numberInt ? Number.parseInt(payment.agreementTotalPence.$numberInt) : 0) / 100,
       sbi: agreement.sbi,
+      parcels,
       options: [...parcelOptions, ...agreementOptions]
     })
   }
