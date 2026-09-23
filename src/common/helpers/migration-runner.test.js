@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { runMigration, transformToEvent, generateStatusChangedEvents } from './migration-runner.js'
+import {
+  runMigration,
+  transformToEvent,
+  generateStatusChangedEvents,
+  formatParcelReference,
+  extractParcels
+} from './migration-runner.js'
 import { processInputMessage } from '#/messaging/inbound/process-message.js'
 import { config } from '#/config.js'
 
@@ -268,6 +274,86 @@ describe('migration-runner', () => {
     })
   })
 
+  describe('formatParcelReference', () => {
+    it('should format sheetId and parcelId when both provided and distinct', () => {
+      expect(formatParcelReference('SD7858', '1059')).toBe('SD7858-1059')
+    })
+
+    it('should return parcelId when sheetId and parcelId are identical', () => {
+      expect(formatParcelReference('ST1337-7020', 'ST1337-7020')).toBe('ST1337-7020')
+    })
+
+    it('should return parcelId when sheetId is omitted', () => {
+      expect(formatParcelReference(undefined, 'ST1337-7020')).toBe('ST1337-7020')
+    })
+
+    it('should return sheetId when parcelId is omitted', () => {
+      expect(formatParcelReference('SD7858', undefined)).toBe('SD7858')
+    })
+
+    it('should return empty string when neither is provided', () => {
+      expect(formatParcelReference(undefined, undefined)).toBe('')
+    })
+  })
+
+  describe('extractParcels', () => {
+    it('should extract parcels from application.parcel', () => {
+      const latestVersion = {
+        application: {
+          parcel: [
+            { sheetId: 'SD7148', parcelId: '9160' },
+            { sheetId: 'SD7148', parcelId: '9161' }
+          ]
+        }
+      }
+      expect(extractParcels(latestVersion)).toEqual(['SD7148-9160', 'SD7148-9161'])
+    })
+
+    it('should extract parcels with single parcelId format from application.parcel', () => {
+      const latestVersion = {
+        application: {
+          parcel: [{ parcelId: 'ST1337-7020' }, { parcelId: 'ST1336-5151' }]
+        }
+      }
+      expect(extractParcels(latestVersion)).toEqual(['ST1337-7020', 'ST1336-5151'])
+    })
+
+    it('should fallback to actionApplications when application.parcel is missing or empty', () => {
+      const latestVersion = {
+        actionApplications: [{ sheetId: 'ST1337-7020', parcelId: 'ST1337-7020' }, { parcelId: 'P1' }]
+      }
+      expect(extractParcels(latestVersion)).toEqual(['ST1337-7020', 'P1'])
+    })
+
+    it('should fallback to payment.parcelItems when application.parcel and actionApplications are missing or empty', () => {
+      const latestVersion = {
+        payment: {
+          parcelItems: {
+            1: { sheetId: 'SD8545', parcelId: '9935' }
+          }
+        }
+      }
+      expect(extractParcels(latestVersion)).toEqual(['SD8545-9935'])
+    })
+
+    it('should deduplicate parcels', () => {
+      const latestVersion = {
+        application: {
+          parcel: [
+            { sheetId: 'SD7148', parcelId: '9160' },
+            { sheetId: 'SD7148', parcelId: '9160' }
+          ]
+        }
+      }
+      expect(extractParcels(latestVersion)).toEqual(['SD7148-9160'])
+    })
+
+    it('should return empty array if no parcels found or version is empty', () => {
+      expect(extractParcels({})).toEqual([])
+      expect(extractParcels(null)).toEqual([])
+    })
+  })
+
   describe('transformToEvent', () => {
     it('should transform Woodland data correctly', () => {
       const agreement = {
@@ -300,6 +386,7 @@ describe('migration-runner', () => {
       expect(event.eventData.agreementType).toBe('woodland')
       expect(event.eventData.sbi).toBe('123')
       expect(event.eventData.agreementValue).toBe(1500)
+      expect(event.eventData.parcels).toEqual(['P1'])
       expect(event.eventData.options).toHaveLength(1)
       expect(event.eventData.options[0].parcelReference).toBe('')
       expect(event.eventData.options[0].optionCode).toBe('PA3')
@@ -405,6 +492,7 @@ describe('migration-runner', () => {
 
       const event = transformToEvent(agreement, grant, [latestVersion])
       expect(event.eventData.agreementType).toBe('frps-private-beta')
+      expect(event.eventData.parcels).toEqual(['SD7858-1059'])
       expect(event.eventData.options).toHaveLength(2)
 
       const parcelOption = event.eventData.options.find((o) => o.parcelReference === 'SD7858-1059')
@@ -418,7 +506,7 @@ describe('migration-runner', () => {
       expect(agreementOption.optionCode).toBe('AGR_FEE')
       expect(agreementOption.optionValue).toBe(272)
     })
-    it('should emit empty options for FPTT offered agreements with no dates', () => {
+    it('should emit empty options and empty parcels for FPTT offered agreements with no dates or parcels', () => {
       const agreement = { agreementNumber: 'FPTT1', createdAt: { $date: { $numberLong: '1781614946244' } } }
       const grant = { code: 'frps-private-beta' }
       const latestVersion = {
@@ -430,6 +518,7 @@ describe('migration-runner', () => {
       }
       const event = transformToEvent(agreement, grant, [latestVersion])
       expect(event.eventData.options).toEqual([])
+      expect(event.eventData.parcels).toEqual([])
     })
     it('should throw error for unsupported grant code', () => {
       const agreement = { agreementNumber: 'AGR1' }
