@@ -49,11 +49,24 @@ describe('migration-runner', () => {
   })
 
   describe('runMigration', () => {
-    it('should skip if migration already succeeded', async () => {
-      mockDb.findOne.mockResolvedValue({ status: 'success' })
+    it('should skip if migration already succeeded and migrated messages found', async () => {
+      mockDb.findOne.mockResolvedValueOnce({ status: 'success' }).mockResolvedValueOnce({ _id: 'migration-1' })
       await runMigration(mockDb, mockMetrics, mockLogger)
       expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('already completed'))
       expect(global.fetch).not.toHaveBeenCalled()
+    })
+
+    it('should not skip if migration succeeded but no migrated messages found', async () => {
+      mockDb.findOne.mockResolvedValueOnce({ status: 'success' }).mockResolvedValueOnce(null)
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ agreementNumbers: [] })
+      })
+
+      await runMigration(mockDb, mockMetrics, mockLogger)
+      expect(mockLogger.info).not.toHaveBeenCalledWith(expect.stringContaining('already completed'))
+      expect(global.fetch).toHaveBeenCalled()
     })
 
     it('should skip if no api token available', async () => {
