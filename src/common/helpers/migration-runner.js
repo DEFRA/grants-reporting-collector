@@ -18,8 +18,11 @@ export const runMigration = async (db, metrics, logger) => {
   const status = await collection.findOne({ _id: MIGRATION_COLLECTION })
 
   if (status?.status === 'success') {
-    logger.info('Migration already completed successfully. Skipping.')
-    return
+    const hasMigratedMessages = await db.collection('processed_messages').findOne({ _id: { $regex: 'migration' } })
+    if (hasMigratedMessages) {
+      logger.info('Migration already completed successfully. Skipping.')
+      return
+    }
   }
 
   if (!config.get('agreementsApi.token')) {
