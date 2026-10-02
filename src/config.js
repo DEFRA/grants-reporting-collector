@@ -155,19 +155,30 @@ export const config = convict({
       env: 'TRACING_HEADER'
     }
   },
-  agreementsApi: {
-    baseUrl: {
-      doc: 'Agreements API base URL',
-      format: String,
-      default: 'https://farming-grants-agreements-api.dev.cdp-int.defra.cloud',
-      env: 'AGREEMENTS_API_BASE_URL'
-    },
-    token: {
-      doc: 'Agreements API bearer token',
+  migration: {
+    fileName1: {
+      doc: 'First file name for migration',
       format: String,
       default: '',
-      sensitive: true,
-      env: 'AGREEMENTS_API_TOKEN'
+      env: 'MIGRATION_FILE_NAME_1'
+    },
+    fileName2: {
+      doc: 'Second file name for migration',
+      format: String,
+      default: '',
+      env: 'MIGRATION_FILE_NAME_2'
+    },
+    parcels1: {
+      doc: 'Parcels for the first file',
+      format: Array,
+      default: [],
+      env: 'MIGRATION_PARCELS_1'
+    },
+    parcels2: {
+      doc: 'Parcels for the second file',
+      format: Array,
+      default: [],
+      env: 'MIGRATION_PARCELS_2'
     }
   }
 })

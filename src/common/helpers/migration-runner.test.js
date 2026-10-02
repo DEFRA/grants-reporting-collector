@@ -1,34 +1,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import {
-  runMigration,
-  transformToEvent,
-  generateStatusChangedEvents,
-  formatParcelReference,
-  extractParcels
-} from './migration-runner.js'
-import { processInputMessage } from '#/messaging/inbound/process-message.js'
+import { runMigration } from './migration-runner.js'
 import { config } from '#/config.js'
+import { initialiseClient, uploadBlob, getBucketName } from '@defra/grants-config-utils/s3-interactions'
+import { GetObjectCommand } from '@aws-sdk/client-s3'
 
 vi.mock('#/config.js', () => ({
   config: {
-    get: vi.fn((key) => {
-      if (key === 'agreementsApi.baseUrl') return 'https://api.example.com'
-      if (key === 'agreementsApi.token') return 'test-token'
-      if (key === 'aws.region') return 'eu-west-2'
-      return null
-    })
+    get: vi.fn()
   }
 }))
 
-vi.mock('#/messaging/inbound/process-message.js', () => ({
-  processInputMessage: vi.fn(),
-  setupS3Client: vi.fn()
+vi.mock('@defra/grants-config-utils/s3-interactions', () => ({
+  initialiseClient: vi.fn(),
+  uploadBlob: vi.fn(),
+  getBucketName: vi.fn()
+}))
+
+vi.mock('@aws-sdk/client-s3', () => ({
+  GetObjectCommand: vi.fn()
 }))
 
 describe('migration-runner', () => {
   let mockDb
   let mockMetrics
   let mockLogger
+  let mockS3Client
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -45,550 +41,110 @@ describe('migration-runner', () => {
       error: vi.fn(),
       warn: vi.fn()
     }
-    global.fetch = vi.fn()
+    mockS3Client = {
+      send: vi.fn()
+    }
+    initialiseClient.mockReturnValue(mockS3Client)
+    getBucketName.mockReturnValue('test-bucket')
   })
 
   describe('runMigration', () => {
-    it('should skip if migration already succeeded and migrated messages found', async () => {
-      mockDb.findOne.mockResolvedValueOnce({ status: 'success' }).mockResolvedValueOnce({ _id: 'migration-1' })
+    it('should skip if migration already succeeded', async () => {
+      mockDb.findOne.mockResolvedValueOnce({ status: 'success' })
       await runMigration(mockDb, mockMetrics, mockLogger)
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('already completed'))
-      expect(global.fetch).not.toHaveBeenCalled()
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Missing parcels patch already completed'))
+      expect(initialiseClient).not.toHaveBeenCalled()
     })
 
-    it('should not skip if migration succeeded but no migrated messages found', async () => {
-      mockDb.findOne.mockResolvedValueOnce({ status: 'success' }).mockResolvedValueOnce(null)
+    it('should skip if migration not configured', async () => {
+      mockDb.findOne.mockResolvedValueOnce(null)
+      config.get.mockReturnValue(null)
 
-      global.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ agreementNumbers: [] })
+      await runMigration(mockDb, mockMetrics, mockLogger)
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Missing parcels patch not configured'))
+      expect(initialiseClient).not.toHaveBeenCalled()
+    })
+
+    it('should fetch, modify and re-upload files', async () => {
+      mockDb.findOne.mockResolvedValueOnce(null)
+      config.get.mockImplementation((key) => {
+        if (key === 'migration.fileName1') return 'file1.json'
+        if (key === 'migration.fileName2') return 'file2.json'
+        if (key === 'migration.parcels1') return ['parcel1', 'parcel2']
+        if (key === 'migration.parcels2') return ['parcel3']
+        return null
       })
 
-      await runMigration(mockDb, mockMetrics, mockLogger)
-      expect(mockLogger.info).not.toHaveBeenCalledWith(expect.stringContaining('already completed'))
-      expect(global.fetch).toHaveBeenCalled()
-    })
+      const mockBody1 = {
+        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '1', name: 'File 1' }))
+      }
+      const mockBody2 = {
+        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '2', name: 'File 2' }))
+      }
 
-    it('should skip if no api token available', async () => {
-      mockDb.findOne.mockResolvedValue(null)
-      config.get.mockImplementationOnce(() => null)
-      await runMigration(mockDb, mockMetrics, mockLogger)
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('Migration not applicable to this environment. Skipping')
-      )
-      expect(global.fetch).not.toHaveBeenCalled()
-    })
-
-    it('should run migration and record success', async () => {
-      mockDb.findOne.mockResolvedValue(null)
-
-      global.fetch = vi.fn((url) => {
-        if (url.includes('code=woodland')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ agreementNumbers: ['grant-1'] })
-          })
-        }
-        if (url.includes('code=frps-private-beta')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ agreementNumbers: [] })
-          })
-        }
-        if (url.includes('grant-1/versions')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({
-              agreement: {
-                agreementNumber: 'AGR1',
-                sbi: '123',
-                createdAt: { $date: { $numberLong: '1780045783425' } }
-              },
-              grant: { code: 'woodland' },
-              versions: [
-                {
-                  status: 'active',
-                  actionApplications: [],
-                  updatedAt: { $date: { $numberLong: '1780045783425' } }
-                }
-              ],
-              nextOffset: null
-            })
-          })
-        }
-        return Promise.resolve({ ok: false })
-      })
+      mockS3Client.send.mockResolvedValueOnce({ Body: mockBody1 }).mockResolvedValueOnce({ Body: mockBody2 })
 
       await runMigration(mockDb, mockMetrics, mockLogger)
-      expect(processInputMessage).toHaveBeenCalledTimes(2)
-      // Main agreement event
-      expect(processInputMessage).toHaveBeenCalledWith(
-        mockDb,
-        mockMetrics,
-        expect.objectContaining({ eventData: expect.objectContaining({ eventType: 'AGREEMENT_CREATED' }) }),
+
+      expect(initialiseClient).toHaveBeenCalled()
+      expect(GetObjectCommand).toHaveBeenCalledTimes(2)
+      expect(GetObjectCommand).toHaveBeenNthCalledWith(1, { Bucket: 'test-bucket', Key: 'file1.json' })
+      expect(GetObjectCommand).toHaveBeenNthCalledWith(2, { Bucket: 'test-bucket', Key: 'file2.json' })
+
+      expect(uploadBlob).toHaveBeenCalledTimes(2)
+      expect(uploadBlob).toHaveBeenNthCalledWith(
+        1,
         mockLogger,
-        { messageId: 'migration-grant-1' },
-        '1780045783425'
+        'file1.json',
+        JSON.stringify({ id: '1', name: 'File 1', parcels: ['parcel1', 'parcel2'] })
       )
-      // Status change event
-      expect(processInputMessage).toHaveBeenCalledWith(
-        mockDb,
-        mockMetrics,
-        expect.objectContaining({ eventData: expect.objectContaining({ eventType: 'AGREEMENT_STATUS_CHANGED' }) }),
+      expect(uploadBlob).toHaveBeenNthCalledWith(
+        2,
         mockLogger,
-        { messageId: 'migration-grant-1-status-1780045783425' },
-        1780045783425
+        'file2.json',
+        JSON.stringify({ id: '2', name: 'File 2', parcels: ['parcel3'] })
       )
+
       expect(mockDb.updateOne).toHaveBeenCalledWith(
-        { _id: 'grant-migration' },
+        { _id: 'missing_parcels_patch_migration' },
         expect.objectContaining({ $set: expect.objectContaining({ status: 'success' }) }),
         { upsert: true }
       )
+      expect(mockLogger.info).toHaveBeenCalledWith('Missing parcels patch completed successfully.')
     })
 
-    it('should handle pagination in versions', async () => {
-      mockDb.findOne.mockResolvedValue(null)
-
-      global.fetch = vi.fn((url) => {
-        if (url.includes('code=woodland')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ agreementNumbers: ['grant-1'] })
-          })
-        }
-        if (url.includes('code=frps-private-beta')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ agreementNumbers: [] })
-          })
-        }
-        if (url.includes('grant-1/versions')) {
-          const offset = new URL(url).searchParams.get('offset')
-          if (offset === '0') {
-            return Promise.resolve({
-              ok: true,
-              json: async () => ({
-                agreement: {
-                  agreementNumber: 'AGR1',
-                  sbi: '123',
-                  createdAt: { $date: { $numberLong: '1780045783425' } }
-                },
-                grant: { code: 'woodland' },
-                versions: [{ status: 'v1', updatedAt: { $date: { $numberLong: '1780045783425' } } }],
-                nextOffset: 1
-              })
-            })
-          }
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({
-              agreement: {
-                agreementNumber: 'AGR1',
-                sbi: '123',
-                createdAt: { $date: { $numberLong: '1780045783425' } }
-              },
-              grant: { code: 'woodland' },
-              versions: [{ status: 'v2', updatedAt: { $date: { $numberLong: '1780045784425' } } }],
-              nextOffset: null
-            })
-          })
-        }
-        return Promise.resolve({ ok: false })
+    it('should handle only one file configured', async () => {
+      mockDb.findOne.mockResolvedValueOnce(null)
+      config.get.mockImplementation((key) => {
+        if (key === 'migration.fileName1') return 'file1.json'
+        if (key === 'migration.parcels1') return ['parcel1']
+        return null
       })
 
+      const mockBody1 = {
+        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '1' }))
+      }
+      mockS3Client.send.mockResolvedValueOnce({ Body: mockBody1 })
+
       await runMigration(mockDb, mockMetrics, mockLogger)
-      expect(processInputMessage).toHaveBeenCalledTimes(3)
-      // Main agreement event (latest is v2)
-      expect(processInputMessage).toHaveBeenCalledWith(
-        mockDb,
-        mockMetrics,
-        expect.objectContaining({ eventData: expect.objectContaining({ agreementStatus: 'v2' }) }),
+
+      expect(GetObjectCommand).toHaveBeenCalledTimes(1)
+      expect(uploadBlob).toHaveBeenCalledTimes(1)
+      expect(uploadBlob).toHaveBeenCalledWith(
         mockLogger,
-        { messageId: 'migration-grant-1' },
-        '1780045783425'
-      )
-      // Status change event v1
-      expect(processInputMessage).toHaveBeenCalledWith(
-        mockDb,
-        mockMetrics,
-        expect.objectContaining({ eventData: expect.objectContaining({ agreementStatus: 'v1' }) }),
-        mockLogger,
-        { messageId: 'migration-grant-1-status-1780045783425' },
-        1780045783425
-      )
-      // Status change event v2
-      expect(processInputMessage).toHaveBeenCalledWith(
-        mockDb,
-        mockMetrics,
-        expect.objectContaining({ eventData: expect.objectContaining({ agreementStatus: 'v2' }) }),
-        mockLogger,
-        { messageId: 'migration-grant-1-status-1780045784425' },
-        1780045784425
+        'file1.json',
+        JSON.stringify({ id: '1', parcels: ['parcel1'] })
       )
     })
 
-    it('should stop and log error if API fails to fetch agreement IDs', async () => {
-      mockDb.findOne.mockResolvedValue(null)
-      global.fetch.mockResolvedValueOnce({ ok: false, statusText: 'Bad Request' })
+    it('should log error and throw if migration fails', async () => {
+      mockDb.findOne.mockResolvedValueOnce(null)
+      config.get.mockReturnValue('some-file.json')
+      mockS3Client.send.mockRejectedValue(new Error('S3 error'))
 
-      await expect(runMigration(mockDb, mockMetrics, mockLogger)).rejects.toThrow(
-        'Failed to fetch agreements for code woodland'
-      )
-      expect(mockLogger.error).toHaveBeenCalled()
+      await expect(runMigration(mockDb, mockMetrics, mockLogger)).rejects.toThrow('S3 error')
+      expect(mockLogger.error).toHaveBeenCalledWith(expect.any(Error), 'Missing parcels patch failed')
       expect(mockDb.updateOne).not.toHaveBeenCalled()
-    })
-
-    it('should stop and log error if API fails to fetch versions', async () => {
-      mockDb.findOne.mockResolvedValue(null)
-      global.fetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ agreementNumbers: ['grant-1'] })
-      })
-      global.fetch.mockResolvedValueOnce({ ok: false, statusText: 'Server Error' })
-
-      await expect(runMigration(mockDb, mockMetrics, mockLogger)).rejects.toThrow(
-        'Failed to fetch versions for grant grant-1'
-      )
-      expect(mockLogger.error).toHaveBeenCalled()
-    })
-
-    it('should warn if no versions found for a grant', async () => {
-      mockDb.findOne.mockResolvedValue(null)
-
-      global.fetch = vi.fn((url) => {
-        if (url.includes('code=woodland')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ agreementNumbers: ['grant-1'] })
-          })
-        }
-        if (url.includes('code=frps-private-beta')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({ agreementNumbers: [] })
-          })
-        }
-        if (url.includes('grant-1/versions')) {
-          return Promise.resolve({
-            ok: true,
-            json: async () => ({
-              agreement: {},
-              grant: {},
-              versions: [],
-              nextOffset: null
-            })
-          })
-        }
-        return Promise.resolve({ ok: false })
-      })
-
-      await runMigration(mockDb, mockMetrics, mockLogger)
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('No versions found'))
-    })
-  })
-
-  describe('formatParcelReference', () => {
-    it('should format sheetId and parcelId when both provided and distinct', () => {
-      expect(formatParcelReference('SD7858', '1059')).toBe('SD7858-1059')
-    })
-
-    it('should return parcelId when sheetId and parcelId are identical', () => {
-      expect(formatParcelReference('ST1337-7020', 'ST1337-7020')).toBe('ST1337-7020')
-    })
-
-    it('should return parcelId when sheetId is omitted', () => {
-      expect(formatParcelReference(undefined, 'ST1337-7020')).toBe('ST1337-7020')
-    })
-
-    it('should return sheetId when parcelId is omitted', () => {
-      expect(formatParcelReference('SD7858', undefined)).toBe('SD7858')
-    })
-
-    it('should return empty string when neither is provided', () => {
-      expect(formatParcelReference(undefined, undefined)).toBe('')
-    })
-  })
-
-  describe('extractParcels', () => {
-    it('should extract parcels from application.parcel', () => {
-      const latestVersion = {
-        application: {
-          parcel: [
-            { sheetId: 'SD7148', parcelId: '9160' },
-            { sheetId: 'SD7148', parcelId: '9161' }
-          ]
-        }
-      }
-      expect(extractParcels(latestVersion)).toEqual(['SD7148-9160', 'SD7148-9161'])
-    })
-
-    it('should extract parcels with single parcelId format from application.parcel', () => {
-      const latestVersion = {
-        application: {
-          parcel: [{ parcelId: 'ST1337-7020' }, { parcelId: 'ST1336-5151' }]
-        }
-      }
-      expect(extractParcels(latestVersion)).toEqual(['ST1337-7020', 'ST1336-5151'])
-    })
-
-    it('should fallback to actionApplications when application.parcel is missing or empty', () => {
-      const latestVersion = {
-        actionApplications: [{ sheetId: 'ST1337-7020', parcelId: 'ST1337-7020' }, { parcelId: 'P1' }]
-      }
-      expect(extractParcels(latestVersion)).toEqual(['ST1337-7020', 'P1'])
-    })
-
-    it('should fallback to payment.parcelItems when application.parcel and actionApplications are missing or empty', () => {
-      const latestVersion = {
-        payment: {
-          parcelItems: {
-            1: { sheetId: 'SD8545', parcelId: '9935' }
-          }
-        }
-      }
-      expect(extractParcels(latestVersion)).toEqual(['SD8545-9935'])
-    })
-
-    it('should deduplicate parcels', () => {
-      const latestVersion = {
-        application: {
-          parcel: [
-            { sheetId: 'SD7148', parcelId: '9160' },
-            { sheetId: 'SD7148', parcelId: '9160' }
-          ]
-        }
-      }
-      expect(extractParcels(latestVersion)).toEqual(['SD7148-9160'])
-    })
-
-    it('should return empty array if no parcels found or version is empty', () => {
-      expect(extractParcels({})).toEqual([])
-      expect(extractParcels(null)).toEqual([])
-    })
-  })
-
-  describe('transformToEvent', () => {
-    it('should transform Woodland data correctly', () => {
-      const agreement = {
-        agreementNumber: 'AGR1',
-        sbi: '123',
-        createdAt: { $date: { $numberLong: '1780045783425' } }
-      }
-      const grant = { code: 'woodland' }
-      const latestVersion = {
-        status: 'active',
-        createdAt: { $date: { $numberLong: '1780045783425' } },
-        actionApplications: [{ parcelId: 'P1', code: 'PA3', appliedFor: { quantity: { $numberDecimal: '10.5' } } }],
-        payment: {
-          agreementStartDate: '2026-06-01',
-          agreementEndDate: '2029-05-31',
-          agreementLevelItems: {
-            1: {
-              code: 'PA3',
-              annualPaymentPence: { $numberInt: '150000' }
-            }
-          },
-          agreementTotalPence: { $numberInt: '150000' }
-        }
-      }
-
-      const event = transformToEvent(agreement, grant, [latestVersion])
-      expect(event.application).toBe('migration-runner')
-      expect(event.service).toBe('grants')
-      expect(event.eventData.agreementId).toBe('AGR1')
-      expect(event.eventData.agreementType).toBe('woodland')
-      expect(event.eventData.sbi).toBe('123')
-      expect(event.eventData.agreementValue).toBe(1500)
-      expect(event.eventData.parcels).toEqual(['P1'])
-      expect(event.eventData.options).toHaveLength(1)
-      expect(event.eventData.options[0].parcelReference).toBe('')
-      expect(event.eventData.options[0].optionCode).toBe('PA3')
-      expect(event.eventData.options[0].optionQuantity).toBe(10.5)
-      expect(event.eventData.options[0].optionValue).toBe(1500)
-      expect(event.eventData.options[0].optionStartDate).toBe('2026-06-01')
-      expect(event.eventData.options[0].optionEndDate).toBe('2029-05-31')
-    })
-
-    it('should search backwards for missing Woodland payment or dates', () => {
-      const agreement = {
-        agreementNumber: 'AGR1',
-        sbi: '123',
-        createdAt: { $date: { $numberLong: '1780045783425' } }
-      }
-      const grant = { code: 'woodland' }
-      const versions = [
-        {
-          createdAt: { $date: { $numberLong: '1780045783425' } },
-          payment: {
-            agreementStartDate: '2023-01-01',
-            agreementEndDate: '2024-01-01',
-            agreementLevelItems: {
-              1: {
-                code: 'PA3',
-                annualPaymentPence: { $numberInt: '150000' }
-              }
-            },
-            agreementTotalPence: { $numberInt: '150000' }
-          }
-        },
-        {
-          status: 'active',
-          correlationId: 'corr-1',
-          createdAt: { $date: { $numberLong: '1780045783425' } },
-          actionApplications: [{ parcelId: 'P1', code: 'PA3', appliedFor: { quantity: { $numberDecimal: '10.5' } } }]
-        }
-      ]
-
-      const event = transformToEvent(agreement, grant, versions)
-      expect(event.eventData.agreementStatus).toBe('active')
-      expect(event.eventData.agreementStartDate).toBe('2023-01-01')
-      expect(event.eventData.agreementEndDate).toBe('2024-01-01')
-      expect(event.eventData.agreementValue).toBe(1500)
-      expect(event.eventData.options[0].optionValue).toBe(1500)
-      expect(event.correlationId).toBe('corr-1')
-    })
-
-    it('should include options without dates for Woodland offered agreements with no dates', () => {
-      const agreement = { agreementNumber: 'AGR1', createdAt: { $date: { $numberLong: '1780045783425' } } }
-      const grant = { code: 'woodland' }
-      const latestVersion = {
-        status: 'offered',
-        payment: {
-          agreementLevelItems: { 1: { code: 'PA3' } }
-        }
-      }
-      const event = transformToEvent(agreement, grant, [latestVersion])
-      expect(event.eventData.options).toHaveLength(1)
-      expect(event.eventData.options[0].optionCode).toBe('PA3')
-      expect(event.eventData.options[0].optionStartDate).toBeUndefined()
-      expect(event.eventData.options[0].optionEndDate).toBeUndefined()
-      expect(event.eventData.options[0].optionYear).toBeUndefined()
-      expect(event.eventData.agreementStartDate).toBeUndefined()
-      expect(event.eventData.agreementEndDate).toBeUndefined()
-    })
-
-    it('should transform FPTT data correctly', () => {
-      const agreement = {
-        agreementNumber: 'FPTT1',
-        sbi: '456',
-        createdAt: { $date: { $numberLong: '1781614946244' } }
-      }
-      const grant = { code: 'frps-private-beta' }
-      const latestVersion = {
-        status: 'accepted',
-        application: {
-          parcel: [
-            { parcelId: '1059', sheetId: 'SD7858', actions: [{ code: 'CMOR1', durationYears: { $numberInt: '3' } }] }
-          ]
-        },
-        payment: {
-          agreementStartDate: '2026-07-01',
-          agreementEndDate: '2027-06-30',
-          parcelItems: {
-            1: {
-              code: 'CMOR1',
-              sheetId: 'SD7858',
-              parcelId: '1059',
-              quantity: { $numberDecimal: '1.4236' },
-              annualPaymentPence: { $numberInt: '1509' }
-            }
-          },
-          agreementLevelItems: {
-            1: {
-              code: 'AGR_FEE',
-              annualPaymentPence: { $numberInt: '27200' }
-            }
-          },
-          agreementTotalPence: { $numberInt: '28709' }
-        }
-      }
-
-      const event = transformToEvent(agreement, grant, [latestVersion])
-      expect(event.eventData.agreementType).toBe('frps-private-beta')
-      expect(event.eventData.parcels).toEqual(['SD7858-1059'])
-      expect(event.eventData.options).toHaveLength(2)
-
-      const parcelOption = event.eventData.options.find((o) => o.parcelReference === 'SD7858-1059')
-      expect(parcelOption.optionCode).toBe('CMOR1')
-      expect(parcelOption.optionQuantity).toBe(1.4236)
-      expect(parcelOption.optionValue).toBe(15.09)
-      expect(parcelOption.optionYear).toBe(3)
-      expect(parcelOption.optionStartDate).toBe('2026-07-01')
-
-      const agreementOption = event.eventData.options.find((o) => o.parcelReference === '')
-      expect(agreementOption.optionCode).toBe('AGR_FEE')
-      expect(agreementOption.optionValue).toBe(272)
-    })
-    it('should emit empty options and empty parcels for FPTT offered agreements with no dates or parcels', () => {
-      const agreement = { agreementNumber: 'FPTT1', createdAt: { $date: { $numberLong: '1781614946244' } } }
-      const grant = { code: 'frps-private-beta' }
-      const latestVersion = {
-        status: 'offered',
-        payment: {
-          parcelItems: { 1: { code: 'CMOR1' } },
-          agreementLevelItems: { 1: { code: 'AGR_FEE' } }
-        }
-      }
-      const event = transformToEvent(agreement, grant, [latestVersion])
-      expect(event.eventData.options).toEqual([])
-      expect(event.eventData.parcels).toEqual([])
-    })
-    it('should throw error for unsupported grant code', () => {
-      const agreement = { agreementNumber: 'AGR1' }
-      const grant = { code: 'unknown' }
-      expect(() => transformToEvent(agreement, grant, [{}])).toThrow('Unsupported grant code: unknown')
-    })
-  })
-
-  describe('generateStatusChangedEvents', () => {
-    it('should generate events when status changes', () => {
-      const agreement = {
-        agreementNumber: 'AGR1',
-        createdAt: { $date: { $numberLong: '1780045783425' } }
-      }
-      const versions = [
-        {
-          status: 'offered',
-          updatedAt: { $date: { $numberLong: '1780045783425' } },
-          payment: {
-            agreementTotalPence: { $numberInt: '10000' },
-            agreementStartDate: '2023-01-01',
-            agreementEndDate: '2024-01-01'
-          }
-        },
-        {
-          status: 'offered', // Same status, no event
-          updatedAt: { $date: { $numberLong: '1780045784425' } }
-        },
-        {
-          status: 'accepted', // Status changed
-          updatedAt: { $date: { $numberLong: '1780045785425' } },
-          payment: {
-            agreementTotalPence: { $numberInt: '15000' }
-          }
-        }
-      ]
-
-      const events = generateStatusChangedEvents(agreement, versions)
-      expect(events).toHaveLength(2)
-
-      expect(events[0].eventData.eventType).toBe('AGREEMENT_STATUS_CHANGED')
-      expect(events[0].eventData.agreementStatus).toBe('offered')
-      expect(events[0].eventData.statusDate).toBe(new Date(1780045783425).toISOString())
-      expect(events[0].eventData.userId).toBeUndefined()
-
-      expect(events[1].eventData.agreementStatus).toBe('accepted')
-      expect(events[1].eventData.statusDate).toBe(new Date(1780045785425).toISOString())
-    })
-
-    it('should skip versions without status', () => {
-      const agreement = {
-        agreementNumber: 'AGR1',
-        createdAt: { $date: { $numberLong: '1780045783425' } }
-      }
-      const versions = [{ updatedAt: { $date: { $numberLong: '1780045783425' } } }]
-      const events = generateStatusChangedEvents(agreement, versions)
-      expect(events).toHaveLength(0)
     })
   })
 })
