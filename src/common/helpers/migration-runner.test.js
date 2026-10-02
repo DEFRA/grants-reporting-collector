@@ -76,10 +76,10 @@ describe('migration-runner', () => {
       })
 
       const mockBody1 = {
-        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '1', name: 'File 1' }))
+        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '1', name: 'File 1', eventData: {} }))
       }
       const mockBody2 = {
-        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '2', name: 'File 2' }))
+        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '2', name: 'File 2', eventData: {} }))
       }
 
       mockS3Client.send.mockResolvedValueOnce({ Body: mockBody1 }).mockResolvedValueOnce({ Body: mockBody2 })
@@ -96,13 +96,13 @@ describe('migration-runner', () => {
         1,
         mockLogger,
         'file1.json',
-        JSON.stringify({ id: '1', name: 'File 1', parcels: ['parcel1', 'parcel2'] })
+        JSON.stringify({ id: '1', name: 'File 1', eventData: { parcels: ['parcel1', 'parcel2'] } })
       )
       expect(uploadBlob).toHaveBeenNthCalledWith(
         2,
         mockLogger,
         'file2.json',
-        JSON.stringify({ id: '2', name: 'File 2', parcels: ['parcel3'] })
+        JSON.stringify({ id: '2', name: 'File 2', eventData: { parcels: ['parcel3'] } })
       )
 
       expect(mockDb.updateOne).toHaveBeenCalledWith(
@@ -122,7 +122,7 @@ describe('migration-runner', () => {
       })
 
       const mockBody1 = {
-        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '1' }))
+        transformToString: vi.fn().mockResolvedValue(JSON.stringify({ id: '1', eventData: {} }))
       }
       mockS3Client.send.mockResolvedValueOnce({ Body: mockBody1 })
 
@@ -133,7 +133,7 @@ describe('migration-runner', () => {
       expect(uploadBlob).toHaveBeenCalledWith(
         mockLogger,
         'file1.json',
-        JSON.stringify({ id: '1', parcels: ['parcel1'] })
+        JSON.stringify({ id: '1', eventData: { parcels: ['parcel1'] } })
       )
     })
 

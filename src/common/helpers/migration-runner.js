@@ -68,7 +68,7 @@ async function processFile(fileName, parcels, logger) {
   const body = await response.Body.transformToString()
   const json = JSON.parse(body)
 
-  json.parcels = parcels
+  json.eventData.parcels = parcels
 
   logger.info(`Re-uploading file ${fileName} with added parcels`)
   await uploadBlob(logger, fileName, JSON.stringify(json))
