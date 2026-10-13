@@ -4,7 +4,7 @@ services:
   floci:
     image: hectorvent/floci:latest-aws
     ports:
-      - '4566:4566'
+      - '4689:4566'
     env_file:
       - 'compose/aws.env'
     environment:
@@ -28,7 +28,7 @@ services:
     networks:
       - cdp-tenant
     ports:
-      - '27017:27017'
+      - '27031:27017'
     volumes:
       - ./compose/mongo:/docker-entrypoint-initdb.d:ro
       - mongodb-data:/data
@@ -46,7 +46,7 @@ services:
       context: .
       target: development
     ports:
-      - '3001:3001'
+      - '3010:3001'
     links:
       - 'floci:floci'
       - 'mongodb:mongodb'
@@ -60,7 +60,7 @@ services:
     environment:
       PORT: 3001
       NODE_ENV: development
-      MONGO_URI: mongodb://mongodb:27017/
+      MONGO_URI: mongodb://mongodb:27031/
       REPORTING_EVENTS_QUEUE_URL: 'http://sqs.eu-west-2.floci:4566/000000000000/gfr__sqs__grants_reporting_events'
       FEATURES_QUEUE_URL: 'http://sqs.eu-west-2.floci:4566/000000000000/gfr__sqs__rc_feature_control_updates.fifo'
     networks:
