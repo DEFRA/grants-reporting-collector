@@ -1,4 +1,5 @@
 import { ecsFormat } from '@elastic/ecs-pino-format'
+import pinoPretty from 'pino-pretty'
 import { config } from '#/config.js'
 import { getTraceId } from '@defra/hapi-tracing'
 
@@ -6,15 +7,17 @@ const logConfig = config.get('log')
 const serviceName = config.get('serviceName')
 const serviceVersion = config.get('serviceVersion')
 
-const formatters = {
-  ecs: {
-    ...ecsFormat({
-      serviceVersion,
-      serviceName
-    })
-  },
-  'pino-pretty': { transport: { target: 'pino-pretty' } }
-}
+const logFormat = logConfig.format
+
+export const loggerStream = logFormat === 'pino-pretty' ? pinoPretty() : undefined
+
+const formatOptions =
+  logFormat === 'ecs'
+    ? ecsFormat({
+        serviceVersion,
+        serviceName
+      })
+    : {}
 
 export const loggerOptions = {
   enabled: logConfig.isEnabled,
@@ -24,7 +27,7 @@ export const loggerOptions = {
     remove: true
   },
   level: logConfig.level,
-  ...formatters[logConfig.format],
+  ...formatOptions,
   nesting: true,
   mixin() {
     const mixinValues = {}
