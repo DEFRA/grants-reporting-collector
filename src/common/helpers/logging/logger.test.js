@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createLogger, trackEvent } from './logger.js'
+import { getLogger, trackEvent } from './logger.js'
 
 describe('logger helper', () => {
-  describe('createLogger', () => {
+  describe('getLogger', () => {
     it('should create and return a logger instance', () => {
-      const logger = createLogger()
+      const logger = getLogger()
       expect(logger).toBeDefined()
       expect(typeof logger.info).toBe('function')
       expect(typeof logger.warn).toBe('function')
