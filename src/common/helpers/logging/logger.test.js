@@ -18,15 +18,15 @@ describe('logger helper', () => {
         info: vi.fn()
       }
 
-      trackEvent(mockLogger, 'scoring.outcome', 'sector', {
-        reference: 'score: 25, value: SOFT_AND_CANE_FRUIT'
+      trackEvent(mockLogger, 'duplicate-message', 'inbound', {
+        reference: 'messageId: ABC123, agreementId: WMG-123-TBC'
       })
 
       expect(mockLogger.info).toHaveBeenCalledWith({
         event: {
-          type: 'scoring.outcome',
-          category: 'sector',
-          reference: 'score: 25, value: SOFT_AND_CANE_FRUIT'
+          type: 'duplicate-message',
+          category: 'inbound',
+          reference: 'messageId: ABC123, agreementId: WMG-123-TBC'
         }
       })
     })
@@ -36,12 +36,12 @@ describe('logger helper', () => {
         info: vi.fn()
       }
 
-      trackEvent(mockLogger, 'scoring.outcome', 'total')
+      trackEvent(mockLogger, 'duplicate-message', 'inbound')
 
       expect(mockLogger.info).toHaveBeenCalledWith({
         event: {
-          type: 'scoring.outcome',
-          category: 'total'
+          type: 'duplicate-message',
+          category: 'inbound'
         }
       })
     })
