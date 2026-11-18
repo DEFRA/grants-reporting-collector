@@ -31,8 +31,8 @@ Core delivery platform Node.js Backend Template.
 
 ### Node.js
 
-Please install [Node.js](http://nodejs.org/) `>= v24` and [npm](https://nodejs.org/) `>= v11`. You will find it
-easier to use the Node Version Manager [nvm](https://github.com/creationix/nvm)
+Please install [Node.js](http://nodejs.org/) `>= v26.13.1` and [npm](https://nodejs.org/) `>= v11.20.0`. You will find it
+easier to use the Node Version Manager [nvm](https://github.com/creationix/nvm), as it will have the specific versions that we are using.
 
 To use the correct version of Node.js for this application, via nvm:
 
