@@ -23,6 +23,7 @@ export const processInputMessage = async (db, metrics, message, logger, attribut
 
   logger.info(`Received New Reporting event (${eventType}): ${JSON.stringify(attributes)}`)
   await metrics.counter('reporting-message-received-success')
+  await metrics.counter(`reporting-message-received-success-${eventType}`)
 
   try {
     await uploadBlob(logger, `reporting-events/${service}/${eventType}/${sentTimestamp}.json`, JSON.stringify(value))
